@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/candidate_card_face.dart';
 import '../../widgets/fade_in_up.dart';
+import '../auth/account_actions.dart';
 import '../auth/complete_profile_screen.dart';
 import '../resume_screen.dart';
 import '../video_intro_screen.dart';
@@ -186,9 +187,18 @@ class CandidateProfileScreen extends StatelessWidget {
             onTap: () => _viewIntroVideo(context),
           ),
         ),
-        const SizedBox(height: 8),
         FadeInUp(
           delay: const Duration(milliseconds: 290),
+          child: _DetailTile(
+            icon: Icons.download_outlined,
+            label: 'Export my data',
+            value: '',
+            onTap: () => showExportDataDialog(context),
+          ),
+        ),
+        const SizedBox(height: 8),
+        FadeInUp(
+          delay: const Duration(milliseconds: 320),
           child: _DetailTile(
             icon: Icons.logout_rounded,
             label: 'Log out',
@@ -196,6 +206,17 @@ class CandidateProfileScreen extends StatelessWidget {
             iconColor: AppColors.reject,
             labelColor: AppColors.reject,
             onTap: () => AuthService.instance.signOut(),
+          ),
+        ),
+        FadeInUp(
+          delay: const Duration(milliseconds: 350),
+          child: _DetailTile(
+            icon: Icons.delete_forever_outlined,
+            label: 'Delete account',
+            value: '',
+            iconColor: AppColors.reject,
+            labelColor: AppColors.reject,
+            onTap: () => confirmAndDeleteAccount(context),
           ),
         ),
       ],

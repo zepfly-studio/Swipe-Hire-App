@@ -23,7 +23,8 @@ service cloud.firestore {
       allow update: if isSignedIn()
                      && request.auth.uid == uid
                      && request.resource.data.role == resource.data.role;
-      allow delete: if false;
+      // Account deletion (AuthService.deleteAccount) -- only the owner.
+      allow delete: if isSignedIn() && request.auth.uid == uid;
     }
 
     // The recruiter-facing swipe deck: only recruiter accounts can browse

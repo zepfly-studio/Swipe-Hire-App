@@ -137,4 +137,34 @@ class AuthService {
   }
 
   Future<void> signOut() => _auth.signOut();
+
+  /// Re-authenticates with a fresh password before a sensitive action
+  /// (here, [deleteAccount]) that Firebase Auth refuses on an old sign-in
+  /// session with `requires-recent-login`.
+  Future<void> reauthenticateWithPassword(String password) async {
+    final user = currentUser;
+    if (user == null || user.email == null) return;
+    final credential = EmailAuthProvider.credential(email: user.email!, password: password);
+    await user.reauthenticateWithCredential(credential);
+  }
+
+  /// Deletes everything this account owns -- its `users/{uid}` profile,
+  /// its `candidate_profiles/{uid}` doc (a no-op if it's a recruiter, who
+  /// never had one), and finally the Firebase Auth account itself. Does
+  /// NOT delete `opportunities` docs a recruiter created about this
+  /// candidate, or Storage files -- those are the recruiter's own hiring
+  /// records, not this account's data to erase.
+  ///
+  /// Throws the underlying [FirebaseAuthException] (code
+  /// `requires-recent-login`) if the sign-in is too old; the caller should
+  /// catch that, prompt for the password via [reauthenticateWithPassword],
+  /// then retry.
+  Future<void> deleteAccount() async {
+    final user = currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+    await _users.doc(uid).delete();
+    await FirebaseFirestore.instance.collection('candidate_profiles').doc(uid).delete();
+    await user.delete();
+  }
 }

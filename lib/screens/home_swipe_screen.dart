@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/candidate.dart';
 import '../services/candidate_service.dart';
@@ -28,34 +29,68 @@ class HomeSwipeScreen extends StatefulWidget {
 class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
   List<Candidate> _candidates = [];
   bool _loading = true;
+  bool _loadingMore = false;
+
+  // Pagination state for the real (Firestore-backed) deck -- `null`
+  // lastDoc + hasMore=true means "haven't fetched a page yet". Once we
+  // fall back to the local mock sample (no real candidates exist), there's
+  // nothing to paginate, so _hasMore stays false.
+  DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
+  bool _hasMore = true;
+  bool _usingMockFallback = false;
+
+  /// Below this many un-swiped cards left in the deck, fetch the next page
+  /// so the recruiter never actually runs dry mid-swipe.
+  static const int _lowWaterMark = 5;
 
   @override
   void initState() {
     super.initState();
-    _loadCandidates();
+    _loadFirstPage();
   }
 
-  Future<void> _loadCandidates() async {
+  Future<void> _loadFirstPage() async {
     List<Candidate> loaded = [];
     try {
-      loaded = await CandidateService.instance.fetchCandidates();
+      final page = await CandidateService.instance.fetchCandidatesPage();
+      loaded = page.candidates;
+      _lastDoc = page.lastDoc;
+      _hasMore = page.hasMore;
     } catch (e, stackTrace) {
       // Offline, or a permissions/config issue -- fall back to sample data
       // so the app stays fully usable.
-      ErrorReporter.report(e, stackTrace, reason: 'HomeSwipeScreen: fetchCandidates failed');
+      ErrorReporter.report(e, stackTrace, reason: 'HomeSwipeScreen: fetchCandidatesPage failed');
     }
-    if (loaded.isEmpty) {
+    if (loaded.isEmpty && !_hasMore) {
       loaded = mockCandidates();
+      _usingMockFallback = true;
     }
-    loaded = loaded
-        .where((c) => !WishlistService.instance.hasBeenSwiped(c.id))
-        .toList();
+    loaded = loaded.where((c) => !WishlistService.instance.hasBeenSwiped(c.id)).toList();
 
     if (!mounted) return;
     setState(() {
       _candidates = loaded;
       _loading = false;
     });
+  }
+
+  Future<void> _maybeLoadMore() async {
+    if (_usingMockFallback || !_hasMore || _loadingMore || _candidates.length >= _lowWaterMark) return;
+    _loadingMore = true;
+    try {
+      final page = await CandidateService.instance.fetchCandidatesPage(startAfter: _lastDoc);
+      _lastDoc = page.lastDoc;
+      _hasMore = page.hasMore;
+      final fresh = page.candidates
+          .where((c) => !WishlistService.instance.hasBeenSwiped(c.id) && !_candidates.any((existing) => existing.id == c.id))
+          .toList();
+      if (!mounted) return;
+      setState(() => _candidates.addAll(fresh));
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'HomeSwipeScreen: load more candidates failed');
+    } finally {
+      _loadingMore = false;
+    }
   }
 
   /// Right swipe just advances to the next candidate without saving
@@ -67,10 +102,12 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
       if (!mounted) return;
       setState(() => _candidates.removeWhere((c) => c.id == candidate.id));
       _showUndoSnackBar('Passed on ${candidate.name}', candidate);
+      _maybeLoadMore();
       return;
     }
     if (!mounted) return;
     setState(() => _candidates.removeWhere((c) => c.id == candidate.id));
+    _maybeLoadMore();
   }
 
   void _handleWishlistSelect(Candidate candidate) async {
@@ -78,6 +115,7 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
     if (!mounted) return;
     setState(() => _candidates.removeWhere((c) => c.id == candidate.id));
     _showUndoSnackBar('Added ${candidate.name} to wishlist', candidate);
+    _maybeLoadMore();
   }
 
   void _showUndoSnackBar(String message, Candidate candidate) {

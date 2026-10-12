@@ -60,6 +60,10 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
 
   bool _loading = false;
 
+  static const int _maxPhotoBytes = 5 * 1024 * 1024;
+  static const int _maxResumeBytes = 5 * 1024 * 1024;
+  static const int _maxVideoBytes = 50 * 1024 * 1024;
+
   bool get _isRecruiter => widget.user.role == UserRole.recruiter;
   bool get _isEditMode => widget.existingCandidateProfile != null;
 
@@ -106,6 +110,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   Future<void> _pickAndUpload({
     required String slot,
     required FileType fileType,
+    required int maxBytes,
     List<String>? allowedExtensions,
     required Future<String> Function(PlatformFile) upload,
     required ValueChanged<String> onUploaded,
@@ -116,6 +121,13 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     );
     final file = files.isEmpty ? null : files.first;
     if (file == null || !mounted) return;
+
+    final size = file.lengthSync() ?? await file.length();
+    if (size != null && size > maxBytes) {
+      _showMessage('${file.name} is ${_formatBytes(size)} -- max allowed is ${_formatBytes(maxBytes)}.');
+      return;
+    }
+
     setState(() => _uploadingSlot = slot);
     try {
       final url = await upload(file);
@@ -203,6 +215,11 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
         backgroundColor: isError ? AppColors.reject : AppColors.surfaceAlt,
         behavior: SnackBarBehavior.floating,
       ));
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB';
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
   }
 
   @override
@@ -454,11 +471,13 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           _MediaUploadRow(
             icon: Icons.person_outline_rounded,
             label: 'Profile photo',
+            hint: 'Max ${_formatBytes(_maxPhotoBytes)}',
             hasFile: _photoUrl.isNotEmpty,
             uploading: _uploadingSlot == 'photo',
             onTap: () => _pickAndUpload(
               slot: 'photo',
               fileType: FileType.image,
+              maxBytes: _maxPhotoBytes,
               upload: (file) => CandidateProfileService.instance.uploadPhoto(widget.user.uid, file),
               onUploaded: (url) => _photoUrl = url,
             ),
@@ -467,11 +486,13 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           _MediaUploadRow(
             icon: Icons.description_outlined,
             label: 'Resume (PDF)',
+            hint: 'Max ${_formatBytes(_maxResumeBytes)}',
             hasFile: _resumeUrl.isNotEmpty,
             uploading: _uploadingSlot == 'resume',
             onTap: () => _pickAndUpload(
               slot: 'resume',
               fileType: FileType.custom,
+              maxBytes: _maxResumeBytes,
               allowedExtensions: const ['pdf'],
               upload: (file) => CandidateProfileService.instance.uploadResume(widget.user.uid, file),
               onUploaded: (url) => _resumeUrl = url,
@@ -481,11 +502,13 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           _MediaUploadRow(
             icon: Icons.videocam_outlined,
             label: 'Intro video',
+            hint: 'Max ${_formatBytes(_maxVideoBytes)}',
             hasFile: _introVideoUrl.isNotEmpty,
             uploading: _uploadingSlot == 'intro_video',
             onTap: () => _pickAndUpload(
               slot: 'intro_video',
               fileType: FileType.video,
+              maxBytes: _maxVideoBytes,
               upload: (file) => CandidateProfileService.instance.uploadIntroVideo(widget.user.uid, file),
               onUploaded: (url) => _introVideoUrl = url,
             ),
@@ -515,6 +538,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
 class _MediaUploadRow extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String hint;
   final bool hasFile;
   final bool uploading;
   final VoidCallback onTap;
@@ -522,6 +546,7 @@ class _MediaUploadRow extends StatelessWidget {
   const _MediaUploadRow({
     required this.icon,
     required this.label,
+    required this.hint,
     required this.hasFile,
     required this.uploading,
     required this.onTap,
@@ -547,7 +572,7 @@ class _MediaUploadRow extends StatelessWidget {
                   children: [
                     Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                     Text(
-                      hasFile ? 'Uploaded' : 'Not uploaded',
+                      hasFile ? 'Uploaded · $hint' : 'Not uploaded · $hint',
                       style: TextStyle(color: hasFile ? AppColors.like : AppColors.textSecondary, fontSize: 11),
                     ),
                   ],

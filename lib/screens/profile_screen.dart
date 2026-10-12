@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'auth/account_actions.dart';
 import '../services/auth_service.dart';
 import '../services/recruiter_profile_service.dart';
 import '../theme/app_theme.dart';
@@ -132,6 +133,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 FadeInUp(
                   delay: const Duration(milliseconds: 280),
                   child: OutlinedButton.icon(
+                    onPressed: () => showExportDataDialog(context),
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Export my data'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FadeInUp(
+                  delay: const Duration(milliseconds: 320),
+                  child: OutlinedButton.icon(
                     onPressed: () => AuthService.instance.signOut(),
                     icon: const Icon(Icons.logout_rounded, color: AppColors.reject),
                     label: const Text('Log out', style: TextStyle(color: AppColors.reject)),
@@ -140,6 +154,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       side: const BorderSide(color: AppColors.reject),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FadeInUp(
+                  delay: const Duration(milliseconds: 360),
+                  child: TextButton.icon(
+                    onPressed: () => confirmAndDeleteAccount(context),
+                    icon: const Icon(Icons.delete_forever_outlined, color: AppColors.reject, size: 18),
+                    label: const Text('Delete account', style: TextStyle(color: AppColors.reject)),
                   ),
                 ),
               ],
