@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../candidate/candidate_root_shell.dart';
@@ -56,6 +57,7 @@ class AuthGate extends StatelessWidget {
             if (!profile.profileComplete) {
               return CompleteProfileScreen(user: profile);
             }
+            NotificationService.instance.initForSignedInUser(profile.uid);
             return profile.role == UserRole.recruiter
                 ? const RootShell()
                 : CandidateRootShell(user: profile);

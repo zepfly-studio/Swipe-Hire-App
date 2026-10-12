@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
@@ -32,10 +33,33 @@ Future<void> main() async {
     };
   }
 
+  await _activateAppCheck();
+
   await WishlistService.instance.init();
   await RecruiterProfileService.instance.init();
 
   runApp(const HiringApp());
+}
+
+/// Starts attaching App Check tokens to Firebase requests -- this alone
+/// doesn't block anything; a service only rejects unattested requests
+/// once "Enforce" is turned on for it in the Firebase console, which
+/// hasn't been done yet. Mobile uses the debug provider (prints a token
+/// to the device log on first run -- register it in the console's App
+/// Check > Apps > "Manage debug tokens" when ready to test real
+/// enforcement). Web is skipped entirely for now: it needs a reCAPTCHA v3
+/// site key registered in the console first, and activating with a
+/// placeholder key could make every Firebase call on web start failing.
+Future<void> _activateAppCheck() async {
+  if (kIsWeb) return;
+  try {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+      appleProvider: AppleProvider.debug,
+    );
+  } catch (e, stackTrace) {
+    ErrorReporter.report(e, stackTrace, reason: 'App Check activation failed');
+  }
 }
 
 class HiringApp extends StatelessWidget {

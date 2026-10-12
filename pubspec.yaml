@@ -41,6 +41,8 @@ dependencies:
   cloud_firestore: ^5.5.0
   firebase_storage: ^12.3.6
   firebase_crashlytics: ^4.1.3
+  firebase_app_check: ^0.3.1+6
+  firebase_messaging: ^15.1.6
 
   # Local wishlist storage
   hive: ^2.2.3
