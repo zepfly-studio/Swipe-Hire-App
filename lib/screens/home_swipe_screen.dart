@@ -180,15 +180,13 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
           child: Column(
             children: [
               FadeInUp(child: _buildHeader()),
-              const SizedBox(height: 10),
-              FadeInUp(delay: const Duration(milliseconds: 40), child: _buildStatsBar()),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
                     : _candidates.isEmpty
                         ? _buildEmptyState()
-                        : FadeInUp(delay: const Duration(milliseconds: 80), child: _buildCardStack()),
+                        : FadeInUp(delay: const Duration(milliseconds: 60), child: _buildCardStack()),
               ),
               const SizedBox(height: 10),
             ],
@@ -227,68 +225,6 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
           const SizedBox(width: 8),
           SizedBox(width: 38, height: 38, child: ClipOval(child: InitialsAvatar(name: displayName))),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStatsBar() {
-    final upcoming = _candidates.skip(1).take(3).toList();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.border),
-          boxShadow: AppColors.cardShadow(),
-        ),
-        child: Row(
-          children: [
-            Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.like, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${_candidates.length}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                const Text('Candidates', style: TextStyle(fontSize: 9.5, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-              ],
-            ),
-            const Spacer(),
-            if (upcoming.isNotEmpty) ...[
-              SizedBox(
-                width: 22.0 * upcoming.length + 10,
-                height: 30,
-                child: Stack(
-                  children: [
-                    for (int i = 0; i < upcoming.length; i++)
-                      Positioned(
-                        left: i * 18.0,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.surface, width: 2)),
-                          child: ClipOval(child: InitialsAvatar(name: upcoming[i].name)),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            OutlinedButton.icon(
-              onPressed: (_loading || _candidates.isEmpty) ? null : _openSearch,
-              icon: const Icon(Icons.tune_rounded, size: 15),
-              label: const Text('Filters', style: TextStyle(fontSize: 12.5)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.accent,
-                side: const BorderSide(color: AppColors.accent),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
