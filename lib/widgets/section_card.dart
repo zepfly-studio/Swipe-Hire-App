@@ -53,6 +53,7 @@ class StatusBadge extends StatelessWidget {
   const StatusBadge({super.key, required this.status});
 
   Color get _color => switch (status) {
+        OpportunityStatus.applied => AppColors.textSecondary,
         OpportunityStatus.shortlisted => AppColors.accentAlt,
         OpportunityStatus.interviewScheduled => const Color(0xFFFFB84D),
         OpportunityStatus.offered => AppColors.like,

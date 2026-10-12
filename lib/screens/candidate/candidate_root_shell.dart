@@ -8,11 +8,14 @@ import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
 import 'candidate_applications_screen.dart';
 import 'candidate_dashboard_screen.dart';
+import 'candidate_jobs_screen.dart';
 import 'candidate_profile_screen.dart';
+import 'candidate_saved_jobs_screen.dart';
 
-/// Bottom-nav shell for a candidate account: Dashboard, My Applications
-/// and Profile. Mirrors the recruiter's [RootShell] pattern -- an
-/// IndexedStack keeps each tab's scroll position alive while switching.
+/// Bottom-nav shell for a candidate account: Dashboard, Browse Jobs, My
+/// Applications, Saved and Profile. Mirrors the recruiter's [RootShell]
+/// pattern -- an IndexedStack keeps each tab's scroll position alive while
+/// switching.
 class CandidateRootShell extends StatefulWidget {
   final AppUser user;
   const CandidateRootShell({super.key, required this.user});
@@ -62,8 +65,10 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
               return IndexedStack(
                 index: _index,
                 children: [
-                  CandidateDashboardScreen(user: widget.user, profile: profile, onViewAllApplications: () => _goTo(1)),
+                  CandidateDashboardScreen(user: widget.user, profile: profile, onViewAllApplications: () => _goTo(2)),
+                  CandidateJobsScreen(user: widget.user),
                   CandidateApplicationsScreen(user: widget.user),
+                  CandidateSavedJobsScreen(user: widget.user),
                   CandidateProfileScreen(user: widget.user, profile: profile, onProfileUpdated: _onProfileUpdated),
                 ],
               );
@@ -90,7 +95,9 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
           height: 64,
           destinations: const [
             NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
+            NavigationDestination(icon: Icon(Icons.work_outline_rounded), selectedIcon: Icon(Icons.work_rounded), label: 'Jobs'),
             NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description_rounded), label: 'Applications'),
+            NavigationDestination(icon: Icon(Icons.bookmark_border_rounded), selectedIcon: Icon(Icons.bookmark_rounded), label: 'Saved'),
             NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
           ],
         ),

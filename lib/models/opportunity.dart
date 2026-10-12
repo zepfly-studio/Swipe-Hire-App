@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Where a candidate stands with one recruiter/company -- the thing a
 /// candidate's "Hiring Activity" section and a recruiter's "Pipeline" tab
 /// both read and write.
-enum OpportunityStatus { shortlisted, interviewScheduled, offered, rejected, hired }
+enum OpportunityStatus { applied, shortlisted, interviewScheduled, offered, rejected, hired }
 
 extension OpportunityStatusX on OpportunityStatus {
   static OpportunityStatus fromString(String value) {
@@ -14,6 +14,7 @@ extension OpportunityStatusX on OpportunityStatus {
   }
 
   String get label => switch (this) {
+        OpportunityStatus.applied => 'Applied',
         OpportunityStatus.shortlisted => 'Shortlisted',
         OpportunityStatus.interviewScheduled => 'Interview scheduled',
         OpportunityStatus.offered => 'Offer extended',
@@ -34,6 +35,11 @@ class Opportunity {
   final String companyName;
   final String recruiterName;
   final String role;
+
+  /// Set when this opportunity started from a candidate applying to a
+  /// [JobPosting] (JobPostingService.apply) rather than a recruiter
+  /// reaching out first -- empty for the latter.
+  final String jobPostingId;
   final OpportunityStatus status;
   final DateTime? interviewDate;
   final String interviewMode;
@@ -51,6 +57,7 @@ class Opportunity {
     required this.companyName,
     required this.recruiterName,
     required this.role,
+    this.jobPostingId = '',
     this.status = OpportunityStatus.shortlisted,
     this.interviewDate,
     this.interviewMode = '',
@@ -70,6 +77,7 @@ class Opportunity {
       companyName: map['companyName'] ?? '',
       recruiterName: map['recruiterName'] ?? '',
       role: map['role'] ?? '',
+      jobPostingId: map['jobPostingId'] ?? '',
       status: OpportunityStatusX.fromString(map['status'] ?? 'shortlisted'),
       interviewDate: (map['interviewDate'] as Timestamp?)?.toDate(),
       interviewMode: map['interviewMode'] ?? '',
@@ -89,6 +97,7 @@ class Opportunity {
       'companyName': companyName,
       'recruiterName': recruiterName,
       'role': role,
+      'jobPostingId': jobPostingId,
       'status': status.name,
       'interviewDate': interviewDate == null ? null : Timestamp.fromDate(interviewDate!),
       'interviewMode': interviewMode,

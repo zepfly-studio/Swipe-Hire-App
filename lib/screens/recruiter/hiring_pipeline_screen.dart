@@ -10,11 +10,13 @@ import '../../widgets/animated_background.dart';
 import '../../widgets/candidate_card_face.dart';
 import '../../widgets/fade_in_up.dart';
 import '../../widgets/section_card.dart';
+import 'my_postings_tab.dart';
 
-/// The recruiter's hiring pipeline: look up a real candidate account by
-/// email, then record/update where things stand with them -- shortlisted,
-/// an interview schedule, or an offer. Every change shows up live on that
-/// candidate's own "Hiring Activity" dashboard.
+/// The recruiter's hiring side: "Pipeline" (every candidate interaction --
+/// found by email search or from someone applying to a posting) and "My
+/// Postings" (roles they've published for candidates to browse and apply
+/// to). Every change here shows up live on the matching candidate's own
+/// dashboard.
 class HiringPipelineScreen extends StatefulWidget {
   const HiringPipelineScreen({super.key});
 
@@ -22,7 +24,15 @@ class HiringPipelineScreen extends StatefulWidget {
   State<HiringPipelineScreen> createState() => _HiringPipelineScreenState();
 }
 
-class _HiringPipelineScreenState extends State<HiringPipelineScreen> {
+class _HiringPipelineScreenState extends State<HiringPipelineScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(length: 2, vsync: this);
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -36,63 +46,80 @@ class _HiringPipelineScreenState extends State<HiringPipelineScreen> {
                 child: Row(
                   children: [
                     const Expanded(
-                      child: Text('Pipeline', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                      child: Text('Hiring', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                     ),
-                    FilledButton.icon(
-                      onPressed: () => _openSearch(context),
-                      icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                      label: const Text('New'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    if (_tabController.index == 0)
+                      FilledButton.icon(
+                        onPressed: () => _openSearch(context),
+                        icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                        label: const Text('New'),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
+              TabBar(
+                controller: _tabController,
+                onTap: (_) => setState(() {}),
+                labelColor: AppColors.accentAlt,
+                unselectedLabelColor: AppColors.textSecondary,
+                indicatorColor: AppColors.accentAlt,
+                tabs: const [
+                  Tab(text: 'Pipeline'),
+                  Tab(text: 'My Postings'),
+                ],
+              ),
               Expanded(
-                child: StreamBuilder<List<Opportunity>>(
-                  stream: OpportunityService.instance.streamForRecruiter(
-                    AuthService.instance.currentUser!.uid,
-                  ),
-                  builder: (context, snapshot) {
-                    final opportunities = snapshot.data ?? const [];
-                    if (opportunities.isEmpty) {
-                      return FadeInUp(
-                        child: const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32),
-                            child: Text(
-                              'No candidates in your pipeline yet.\nTap "New" and search a candidate by email to get started.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                      itemCount: opportunities.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final opportunity = opportunities[index];
-                        return FadeInUp(
-                          delay: Duration(milliseconds: 40 * index),
-                          child: _PipelineTile(
-                            opportunity: opportunity,
-                            onTap: () => _openEditor(context, existing: opportunity),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_buildPipelineTab(), const MyPostingsTab()],
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPipelineTab() {
+    return StreamBuilder<List<Opportunity>>(
+      stream: OpportunityService.instance.streamForRecruiter(AuthService.instance.currentUser!.uid),
+      builder: (context, snapshot) {
+        final opportunities = snapshot.data ?? const [];
+        if (opportunities.isEmpty) {
+          return FadeInUp(
+            child: const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'No candidates in your pipeline yet.\nTap "New" to search a candidate by email, or wait for someone to apply to a posting.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          itemCount: opportunities.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final opportunity = opportunities[index];
+            return FadeInUp(
+              delay: Duration(milliseconds: 40 * index),
+              child: _PipelineTile(
+                opportunity: opportunity,
+                onTap: () => _openEditor(context, existing: opportunity),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -439,7 +466,7 @@ class _OpportunityEditorScreenState extends State<_OpportunityEditorScreen> {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: OpportunityStatus.values.map((status) {
+        children: OpportunityStatus.values.where((s) => s != OpportunityStatus.applied).map((status) {
           final selected = status == _status;
           return ChoiceChip(
             label: Text(status.label),

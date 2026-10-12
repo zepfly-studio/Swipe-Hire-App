@@ -11,6 +11,7 @@ class CandidateApplicationTile extends StatelessWidget {
   const CandidateApplicationTile({super.key, required this.opportunity});
 
   Color get _statusColor => switch (opportunity.status) {
+        OpportunityStatus.applied => AppColors.textSecondary,
         OpportunityStatus.shortlisted => AppColors.accentAlt,
         OpportunityStatus.interviewScheduled => const Color(0xFFFFB84D),
         OpportunityStatus.offered => AppColors.like,

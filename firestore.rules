@@ -42,16 +42,45 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == uid;
     }
 
+    // A candidate's bookmarked job postings -- fully private to its owner.
+    match /candidate_profiles/{uid}/saved_jobs/{jobPostingId} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // A role a recruiter is hiring for. Any signed-in account can read
+    // postings (candidates browse them); only the recruiter who created
+    // one can edit or close it.
+    match /job_postings/{jobPostingId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                     && myRole() == 'recruiter'
+                     && request.resource.data.recruiterUid == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.recruiterUid == request.auth.uid;
+    }
+
     // One recruiter's hiring interaction with one candidate -- status,
     // interview schedule, offer. The candidate can only read their own;
     // the recruiter who created it can read/update it, but can never
-    // reassign it to a different candidate or recruiter.
+    // reassign it to a different candidate or recruiter. A candidate may
+    // also create one themselves by applying to a job_posting (status
+    // "applied", recruiterUid cross-checked against that posting's real
+    // owner so they can't fabricate who it's addressed to).
     match /opportunities/{opportunityId} {
       allow read: if isSignedIn()
                    && (resource.data.candidateUid == request.auth.uid || resource.data.recruiterUid == request.auth.uid);
       allow create: if isSignedIn()
-                     && myRole() == 'recruiter'
-                     && request.resource.data.recruiterUid == request.auth.uid;
+                     && (
+                       (myRole() == 'recruiter' && request.resource.data.recruiterUid == request.auth.uid)
+                       || (
+                         myRole() == 'candidate'
+                         && request.resource.data.candidateUid == request.auth.uid
+                         && request.resource.data.status == 'applied'
+                         && request.resource.data.jobPostingId is string
+                         && request.resource.data.jobPostingId != ''
+                         && request.resource.data.recruiterUid ==
+                            get(/databases/$(database)/documents/job_postings/$(request.resource.data.jobPostingId)).data.recruiterUid
+                       )
+                     );
       allow update: if isSignedIn()
                      && resource.data.recruiterUid == request.auth.uid
                      && request.resource.data.recruiterUid == resource.data.recruiterUid
