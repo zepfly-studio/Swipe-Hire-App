@@ -16,6 +16,12 @@ import 'verify_email_screen.dart';
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
+  /// Temporarily off so any email can sign in without clicking a
+  /// verification link -- [VerifyEmailScreen] and the send/resend/reload
+  /// plumbing in [AuthService] are still fully wired up, so turning this
+  /// back on later is a one-line flip.
+  static const bool requireEmailVerification = false;
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -28,7 +34,7 @@ class AuthGate extends StatelessWidget {
         if (user == null) {
           return const LoginScreen();
         }
-        if (!user.emailVerified) {
+        if (requireEmailVerification && !user.emailVerified) {
           return VerifyEmailScreen(email: user.email ?? '');
         }
         return FutureBuilder<AppUser?>(
