@@ -2,8 +2,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// Decorative, slowly-drifting gradient blobs behind the content to give the
-/// dark theme depth without distracting from the cards on top.
+/// Decorative, slowly-drifting colour-wash blobs behind the content to give
+/// the light theme some depth without distracting from the cards on top.
 class AnimatedBackdrop extends StatefulWidget {
   final Widget child;
   const AnimatedBackdrop({super.key, required this.child});
@@ -59,12 +59,14 @@ class _BlobPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Normal (not additive) blending at a low alpha: on a light background
+    // this gently tints it with colour instead of blowing it out to white,
+    // which is what BlendMode.plus (designed for the old dark theme) did.
     void blob(Offset center, double radius, Color color) {
       final paint = Paint()
         ..shader = RadialGradient(
-          colors: [color.withValues(alpha: 0.35), color.withValues(alpha: 0.0)],
-        ).createShader(Rect.fromCircle(center: center, radius: radius))
-        ..blendMode = BlendMode.plus;
+          colors: [color.withValues(alpha: 0.16), color.withValues(alpha: 0.0)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius));
       canvas.drawCircle(center, radius, paint);
     }
 

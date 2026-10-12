@@ -61,8 +61,8 @@ class _RootShellState extends State<RootShell> {
           height: 64,
           destinations: [
             const NavigationDestination(
-              icon: Icon(Icons.style_outlined),
-              selectedIcon: Icon(Icons.style_rounded),
+              icon: Icon(Icons.explore_outlined),
+              selectedIcon: Icon(Icons.explore_rounded),
               label: 'Discover',
             ),
             NavigationDestination(
@@ -71,8 +71,8 @@ class _RootShellState extends State<RootShell> {
               label: 'Wishlist',
             ),
             NavigationDestination(
-              icon: _CountBadge(listenable: WishlistService.instance.listenableFinalShortlist(), icon: Icons.playlist_add_check_outlined, count: () => WishlistService.instance.finalShortlistCount),
-              selectedIcon: _CountBadge(listenable: WishlistService.instance.listenableFinalShortlist(), icon: Icons.playlist_add_check_rounded, count: () => WishlistService.instance.finalShortlistCount),
+              icon: _CountBadge(listenable: WishlistService.instance.listenableFinalShortlist(), icon: Icons.star_border_rounded, count: () => WishlistService.instance.finalShortlistCount),
+              selectedIcon: _CountBadge(listenable: WishlistService.instance.listenableFinalShortlist(), icon: Icons.star_rounded, count: () => WishlistService.instance.finalShortlistCount),
               label: 'Shortlist',
             ),
             const NavigationDestination(

@@ -70,7 +70,7 @@ class HiringApp extends StatelessWidget {
     return MaterialApp(
       title: 'SwipeHire',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       home: const SplashScreen(),
     );
   }

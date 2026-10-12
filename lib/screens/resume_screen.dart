@@ -177,9 +177,7 @@ class _FallbackResumeView extends StatelessWidget {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 24, offset: const Offset(0, 12)),
-          ],
+          boxShadow: AppColors.cardShadow(),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -204,6 +204,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
+        boxShadow: AppColors.cardShadow(),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

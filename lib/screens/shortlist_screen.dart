@@ -112,9 +112,7 @@ class _ShortlistTile extends StatelessWidget {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.like.withValues(alpha: 0.4)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 8)),
-          ],
+          boxShadow: AppColors.cardShadow(),
         ),
         child: Row(
           children: [

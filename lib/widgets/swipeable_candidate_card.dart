@@ -152,6 +152,8 @@ class _SwipeableCandidateCardState extends State<SwipeableCandidateCard>
                 onWishlistTap: widget.isTopCard
                     ? () => _flyOut(SwipeDirection.right, onComplete: widget.onWishlistTap)
                     : null,
+                onWatchIntro: widget.isTopCard ? widget.onSwipeDown : null,
+                onViewResume: widget.isTopCard ? widget.onDoubleTap : null,
               ),
               if (likeOpacity > 0)
                 Positioned(

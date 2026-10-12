@@ -6,7 +6,7 @@ import 'package:hiring_app/theme/app_theme.dart';
 void main() {
   testWidgets('App theme renders without error', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
       home: const Scaffold(body: Center(child: Text('TalentSwipe'))),
     ));
 

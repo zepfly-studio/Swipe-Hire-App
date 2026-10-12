@@ -62,6 +62,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           color: AppColors.surface,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: AppColors.border),
+                          boxShadow: AppColors.cardShadow(),
                         ),
                         child: TextField(
                           controller: _controller,
@@ -140,6 +141,7 @@ class _SearchResultTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppColors.border),
+            boxShadow: AppColors.cardShadow(),
           ),
           child: Row(
             children: [

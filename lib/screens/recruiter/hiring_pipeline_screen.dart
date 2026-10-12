@@ -158,6 +158,7 @@ class _PipelineTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: AppColors.border),
+            boxShadow: AppColors.cardShadow(),
           ),
           child: Row(
             children: [

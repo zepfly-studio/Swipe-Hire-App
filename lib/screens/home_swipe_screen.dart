@@ -4,9 +4,11 @@ import '../models/candidate.dart';
 import '../services/candidate_service.dart';
 import '../services/error_reporter.dart';
 import '../services/mock_candidates.dart';
+import '../services/recruiter_profile_service.dart';
 import '../services/wishlist_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_background.dart';
+import '../widgets/candidate_card_face.dart';
 import '../widgets/fade_in_up.dart';
 import '../widgets/page_transitions.dart';
 import '../widgets/swipeable_candidate_card.dart';
@@ -14,9 +16,10 @@ import 'resume_screen.dart';
 import 'search_screen.dart';
 import 'video_intro_screen.dart';
 
-/// Discover tab: nothing but the full-screen swipe deck, plus a small
-/// floating Search icon over the card. Wishlist/Shortlist live in their own
-/// bottom-nav tabs (see [RootShell]).
+/// Discover tab: a header (brand + search + recruiter avatar), a queue
+/// stats bar, the swipe deck, and an explicit row of Pass/Watch/Wishlist
+/// buttons below it (the same actions the swipe gestures already trigger,
+/// for recruiters who'd rather tap than drag).
 class HomeSwipeScreen extends StatefulWidget {
   final VoidCallback onViewWishlist;
 
@@ -171,30 +174,127 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasDeck = !_loading && _candidates.isNotEmpty;
+    final topCandidate = hasDeck ? _candidates.first : null;
+
     return Scaffold(
       body: AnimatedBackdrop(
         child: SafeArea(
-          child: Stack(
+          child: Column(
             children: [
-              Positioned.fill(
+              FadeInUp(child: _buildHeader()),
+              const SizedBox(height: 10),
+              FadeInUp(delay: const Duration(milliseconds: 40), child: _buildStatsBar()),
+              const SizedBox(height: 10),
+              Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
                     : _candidates.isEmpty
                         ? _buildEmptyState()
-                        : FadeInUp(child: _buildCardStack()),
+                        : FadeInUp(delay: const Duration(milliseconds: 80), child: _buildCardStack()),
               ),
-              Positioned(
-                top: 10,
-                right: 10,
-                child: _FloatingIconButton(
-                  icon: Icons.search_rounded,
-                  tooltip: 'Search candidates',
-                  color: AppColors.textPrimary,
-                  onTap: (_loading || _candidates.isEmpty) ? null : _openSearch,
-                ),
-              ),
+              if (hasDeck) ...[
+                const SizedBox(height: 4),
+                FadeInUp(delay: const Duration(milliseconds: 120), child: _buildActionRow(topCandidate!)),
+              ],
+              const SizedBox(height: 10),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    final recruiter = RecruiterProfileService.instance;
+    final displayName = recruiter.name.trim().isEmpty ? 'Recruiter' : recruiter.name.trim();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(gradient: AppColors.accentGradient, borderRadius: BorderRadius.circular(13)),
+            child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('SwipeHire', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800)),
+                Text('Recruiter', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          _HeaderIconButton(
+            icon: Icons.search_rounded,
+            onTap: (_loading || _candidates.isEmpty) ? null : _openSearch,
+          ),
+          const SizedBox(width: 8),
+          SizedBox(width: 38, height: 38, child: ClipOval(child: InitialsAvatar(name: displayName))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsBar() {
+    final upcoming = _candidates.skip(1).take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+          boxShadow: AppColors.cardShadow(),
+        ),
+        child: Row(
+          children: [
+            Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.like, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${_candidates.length}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                const Text('Candidates', style: TextStyle(fontSize: 9.5, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const Spacer(),
+            if (upcoming.isNotEmpty) ...[
+              SizedBox(
+                width: 22.0 * upcoming.length + 10,
+                height: 30,
+                child: Stack(
+                  children: [
+                    for (int i = 0; i < upcoming.length; i++)
+                      Positioned(
+                        left: i * 18.0,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.surface, width: 2)),
+                          child: ClipOval(child: InitialsAvatar(name: upcoming[i].name)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            OutlinedButton.icon(
+              onPressed: (_loading || _candidates.isEmpty) ? null : _openSearch,
+              icon: const Icon(Icons.tune_rounded, size: 15),
+              label: const Text('Filters', style: TextStyle(fontSize: 12.5)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: const BorderSide(color: AppColors.accent),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -203,7 +303,7 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
   Widget _buildCardStack() {
     final visible = _candidates.take(3).toList().reversed.toList();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final cardSize = Size(constraints.maxWidth, constraints.maxHeight);
@@ -231,6 +331,35 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildActionRow(Candidate top) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _ActionButton(
+            icon: Icons.close_rounded,
+            label: 'Pass',
+            color: AppColors.reject,
+            onTap: () => _handleSwipe(top, SwipeDirection.left),
+          ),
+          _ActionButton(
+            icon: Icons.play_arrow_rounded,
+            label: 'Watch',
+            color: AppColors.accent,
+            onTap: () => _openVideoIntro(top),
+          ),
+          _ActionButton(
+            icon: Icons.favorite_rounded,
+            label: 'Wishlist',
+            color: AppColors.like,
+            onTap: () => _handleWishlistSelect(top),
+          ),
+        ],
       ),
     );
   }
@@ -309,57 +438,72 @@ class _AnimatedDeckSlot extends StatelessWidget {
   }
 }
 
-class _FloatingIconButton extends StatefulWidget {
+class _HeaderIconButton extends StatelessWidget {
   final IconData icon;
-  final String tooltip;
-  final Color color;
   final VoidCallback? onTap;
-
-  const _FloatingIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.color,
-    required this.onTap,
-  });
+  const _HeaderIconButton({required this.icon, required this.onTap});
 
   @override
-  State<_FloatingIconButton> createState() => _FloatingIconButtonState();
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface,
+      shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Icon(icon, size: 19, color: onTap == null ? AppColors.textSecondary.withValues(alpha: 0.4) : AppColors.textPrimary),
+        ),
+      ),
+    );
+  }
 }
 
-class _FloatingIconButtonState extends State<_FloatingIconButton> {
+class _ActionButton extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionButton({required this.icon, required this.label, required this.color, required this.onTap});
+
+  @override
+  State<_ActionButton> createState() => _ActionButtonState();
+}
+
+class _ActionButtonState extends State<_ActionButton> {
   double _scale = 1;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: widget.onTap == null ? null : (_) => setState(() => _scale = 0.85),
-      onTapUp: widget.onTap == null ? null : (_) => setState(() => _scale = 1),
-      onTapCancel: widget.onTap == null ? null : () => setState(() => _scale = 1),
+      onTapDown: (_) => setState(() => _scale = 0.88),
+      onTapUp: (_) => setState(() => _scale = 1),
+      onTapCancel: () => setState(() => _scale = 1),
       onTap: widget.onTap,
       child: AnimatedScale(
         scale: _scale,
-        duration: const Duration(milliseconds: 120),
-        child: Tooltip(
-          message: widget.tooltip,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Icon(
-                  widget.icon,
-                  color: widget.onTap == null ? AppColors.textSecondary.withValues(alpha: 0.4) : widget.color,
-                  size: 20,
-                ),
+        duration: const Duration(milliseconds: 110),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: widget.color.withValues(alpha: 0.3), width: 1.5),
+                boxShadow: [
+                  BoxShadow(color: widget.color.withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6)),
+                ],
               ),
-            ],
-          ),
+              child: Icon(widget.icon, color: widget.color, size: 26),
+            ),
+            const SizedBox(height: 6),
+            Text(widget.label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+          ],
         ),
       ),
     );
