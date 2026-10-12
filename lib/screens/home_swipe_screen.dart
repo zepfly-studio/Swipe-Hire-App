@@ -174,9 +174,6 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasDeck = !_loading && _candidates.isNotEmpty;
-    final topCandidate = hasDeck ? _candidates.first : null;
-
     return Scaffold(
       body: AnimatedBackdrop(
         child: SafeArea(
@@ -193,10 +190,6 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
                         ? _buildEmptyState()
                         : FadeInUp(delay: const Duration(milliseconds: 80), child: _buildCardStack()),
               ),
-              if (hasDeck) ...[
-                const SizedBox(height: 4),
-                FadeInUp(delay: const Duration(milliseconds: 120), child: _buildActionRow(topCandidate!)),
-              ],
               const SizedBox(height: 10),
             ],
           ),
@@ -335,35 +328,6 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
     );
   }
 
-  Widget _buildActionRow(Candidate top) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _ActionButton(
-            icon: Icons.close_rounded,
-            label: 'Pass',
-            color: AppColors.reject,
-            onTap: () => _handleSwipe(top, SwipeDirection.left),
-          ),
-          _ActionButton(
-            icon: Icons.play_arrow_rounded,
-            label: 'Watch',
-            color: AppColors.accent,
-            onTap: () => _openVideoIntro(top),
-          ),
-          _ActionButton(
-            icon: Icons.favorite_rounded,
-            label: 'Wishlist',
-            color: AppColors.like,
-            onTap: () => _handleWishlistSelect(top),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyState() {
     return Center(
       child: FadeInUp(
@@ -454,56 +418,6 @@ class _HeaderIconButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(9),
           child: Icon(icon, size: 19, color: onTap == null ? AppColors.textSecondary.withValues(alpha: 0.4) : AppColors.textPrimary),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionButton({required this.icon, required this.label, required this.color, required this.onTap});
-
-  @override
-  State<_ActionButton> createState() => _ActionButtonState();
-}
-
-class _ActionButtonState extends State<_ActionButton> {
-  double _scale = 1;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _scale = 0.88),
-      onTapUp: (_) => setState(() => _scale = 1),
-      onTapCancel: () => setState(() => _scale = 1),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _scale,
-        duration: const Duration(milliseconds: 110),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                shape: BoxShape.circle,
-                border: Border.all(color: widget.color.withValues(alpha: 0.3), width: 1.5),
-                boxShadow: [
-                  BoxShadow(color: widget.color.withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6)),
-                ],
-              ),
-              child: Icon(widget.icon, color: widget.color, size: 26),
-            ),
-            const SizedBox(height: 6),
-            Text(widget.label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-          ],
         ),
       ),
     );
