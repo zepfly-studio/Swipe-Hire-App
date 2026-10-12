@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/candidate.dart';
 import '../services/candidate_service.dart';
+import '../services/error_reporter.dart';
 import '../services/mock_candidates.dart';
 import '../services/wishlist_service.dart';
 import '../theme/app_theme.dart';
@@ -38,9 +39,10 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
     List<Candidate> loaded = [];
     try {
       loaded = await CandidateService.instance.fetchCandidates();
-    } catch (_) {
-      // Firebase not configured yet (or offline) -- fall back to sample data
+    } catch (e, stackTrace) {
+      // Offline, or a permissions/config issue -- fall back to sample data
       // so the app stays fully usable.
+      ErrorReporter.report(e, stackTrace, reason: 'HomeSwipeScreen: fetchCandidates failed');
     }
     if (loaded.isEmpty) {
       loaded = mockCandidates();

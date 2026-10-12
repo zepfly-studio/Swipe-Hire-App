@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../models/candidate.dart';
+import '../services/error_reporter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/candidate_card_face.dart';
@@ -40,7 +41,8 @@ class _VideoIntroScreenState extends State<VideoIntroScreen> {
         ..play();
       if (!mounted) return;
       setState(() => _controller = controller);
-    } catch (_) {
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'VideoIntroScreen: video init failed');
       if (!mounted) return;
       setState(() => _failed = true);
     }

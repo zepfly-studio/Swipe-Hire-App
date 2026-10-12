@@ -8,6 +8,7 @@ import '../candidate/candidate_root_shell.dart';
 import '../root_shell.dart';
 import 'complete_profile_screen.dart';
 import 'login_screen.dart';
+import 'verify_email_screen.dart';
 
 /// Root router shown after the splash screen: signed-out users see the
 /// login/signup flow; signed-in users are routed to the recruiter's
@@ -26,6 +27,9 @@ class AuthGate extends StatelessWidget {
         final user = snapshot.data;
         if (user == null) {
           return const LoginScreen();
+        }
+        if (!user.emailVerified) {
+          return VerifyEmailScreen(email: user.email ?? '');
         }
         return FutureBuilder<AppUser?>(
           key: ValueKey(user.uid),

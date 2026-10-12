@@ -8,6 +8,7 @@ import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
+import '../../services/error_reporter.dart';
 import '../candidate/candidate_root_shell.dart';
 import '../root_shell.dart';
 import 'auth_text_field.dart';
@@ -124,7 +125,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
         _uploadingSlot = null;
       });
       _showMessage('${file.name} uploaded', isError: false);
-    } catch (_) {
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'CompleteProfileScreen: upload $slot failed');
       if (!mounted) return;
       setState(() => _uploadingSlot = null);
       _showMessage('Upload failed. Please try again.');
@@ -184,7 +186,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           MaterialPageRoute(builder: (_) => CandidateRootShell(user: widget.user)),
         );
       }
-    } catch (_) {
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'CompleteProfileScreen: save failed');
       _showMessage('Something went wrong saving your profile. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);

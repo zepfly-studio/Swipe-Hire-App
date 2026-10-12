@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/error_reporter.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
@@ -39,7 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await AuthService.instance.signIn(email: _email.text, password: _password.text);
     } on FirebaseAuthException catch (e) {
       _showMessage(authErrorMessage(e), isError: true);
-    } catch (_) {
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'LoginScreen: sign-in failed');
       _showMessage('Something went wrong. Please try again.', isError: true);
     } finally {
       if (mounted) setState(() => _loading = false);

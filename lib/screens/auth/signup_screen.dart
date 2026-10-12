@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../services/auth_service.dart';
+import '../../services/error_reporter.dart';
 import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
@@ -75,7 +76,8 @@ class _SignupScreenState extends State<SignupScreen> {
       Navigator.of(context).pop();
     } on FirebaseAuthException catch (e) {
       _showMessage(authErrorMessage(e), isError: true);
-    } catch (_) {
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'SignupScreen: sign-up failed');
       _showMessage('Something went wrong. Please try again.', isError: true);
     } finally {
       if (mounted) setState(() => _loading = false);

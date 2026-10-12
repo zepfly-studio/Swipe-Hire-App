@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/app_user.dart';
+import 'error_reporter.dart';
 
 /// Wraps Firebase Auth (email/password) together with the `users/{uid}`
 /// Firestore profile that records which of the two account types --
@@ -13,7 +14,11 @@ class AuthService {
   final CollectionReference<Map<String, dynamic>> _users =
       FirebaseFirestore.instance.collection('users');
 
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  /// Backed by [FirebaseAuth.userChanges] rather than [FirebaseAuth.authStateChanges]
+  /// so that [reloadUser] (called after the user confirms their email) emits
+  /// a fresh [User] with the updated `emailVerified` flag -- `authStateChanges`
+  /// only fires on sign-in/out and would never notice that change.
+  Stream<User?> get authStateChanges => _auth.userChanges();
   User? get currentUser => _auth.currentUser;
 
   Future<AppUser?> fetchProfile(String uid) async {
@@ -54,6 +59,13 @@ class AuthService {
     );
     final user = credential.user!;
     await user.updateDisplayName(name.trim());
+    try {
+      await user.sendEmailVerification();
+    } catch (e, stackTrace) {
+      // Non-critical -- the user can resend from VerifyEmailScreen, so a
+      // flaky send here shouldn't block account creation.
+      ErrorReporter.report(e, stackTrace, reason: 'signUp: sendEmailVerification failed');
+    }
 
     final profile = AppUser(
       uid: user.uid,
@@ -86,6 +98,21 @@ class AuthService {
 
   Future<void> sendPasswordReset(String email) {
     return _auth.sendPasswordResetEmail(email: email.trim());
+  }
+
+  /// Re-sends the verification link to the signed-in user's own email --
+  /// used by [VerifyEmailScreen]'s "Resend" action.
+  Future<void> resendVerificationEmail() {
+    final user = currentUser;
+    if (user == null) return Future.value();
+    return user.sendEmailVerification();
+  }
+
+  /// Refreshes the signed-in user's token/profile from the server (picks
+  /// up `emailVerified` after the link is clicked) and re-emits on
+  /// [authStateChanges] so [AuthGate] reacts without a manual navigation.
+  Future<void> reloadUser() async {
+    await currentUser?.reload();
   }
 
   /// Saves the remaining recruiter details collected on

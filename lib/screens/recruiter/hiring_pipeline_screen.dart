@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/opportunity.dart';
 import '../../services/auth_service.dart';
+import '../../services/error_reporter.dart';
 import '../../services/opportunity_service.dart';
 import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
@@ -355,7 +356,8 @@ class _OpportunityEditorScreenState extends State<_OpportunityEditorScreen> {
       await OpportunityService.instance.save(opportunity);
       if (!mounted) return;
       Navigator.of(context).pop();
-    } catch (_) {
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'HiringPipelineScreen: save opportunity failed');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not save. Please try again.'), backgroundColor: AppColors.reject),
