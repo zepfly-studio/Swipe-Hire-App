@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Each account's own profile -- the role recorded here decides which
+    // home screen AuthGate routes them to, so it must never change after
+    // signup. Only the account owner may read/write it, except recruiters
+    // may also read a candidate's doc (never another recruiter's) to look
+    // them up by email for the hiring pipeline.
+    match /users/{uid} {
+      allow read: if isSignedIn()
+                   && (request.auth.uid == uid || (myRole() == 'recruiter' && resource.data.role == 'candidate'));
+      allow create: if isSignedIn()
+                     && request.auth.uid == uid
+                     && request.resource.data.role in ['recruiter', 'candidate'];
+      allow update: if isSignedIn()
+                     && request.auth.uid == uid
+                     && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+    }
+
+    // The recruiter-facing swipe deck: only recruiter accounts can browse
+    // or edit it.
+    match /candidates/{candidateId} {
+      allow read, write: if isSignedIn() && myRole() == 'recruiter';
+    }
+
+    // A candidate account's own hiring profile (age, skills, expected CTC,
+    // resume/video, etc.), filled in on CompleteProfileScreen. Its owner
+    // can read/write it; recruiters can read any candidate's (that's what
+    // populates the swipe deck) but never write one.
+    match /candidate_profiles/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || myRole() == 'recruiter');
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // One recruiter's hiring interaction with one candidate -- status,
+    // interview schedule, offer. The candidate can only read their own;
+    // the recruiter who created it can read/update it, but can never
+    // reassign it to a different candidate or recruiter.
+    match /opportunities/{opportunityId} {
+      allow read: if isSignedIn()
+                   && (resource.data.candidateUid == request.auth.uid || resource.data.recruiterUid == request.auth.uid);
+      allow create: if isSignedIn()
+                     && myRole() == 'recruiter'
+                     && request.resource.data.recruiterUid == request.auth.uid;
+      allow update: if isSignedIn()
+                     && resource.data.recruiterUid == request.auth.uid
+                     && request.resource.data.recruiterUid == resource.data.recruiterUid
+                     && request.resource.data.candidateUid == resource.data.candidateUid;
+      allow delete: if false;
+    }
+  }
+}

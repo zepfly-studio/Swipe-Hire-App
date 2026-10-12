@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "625477683819",
+    "project_id": "swipehire-app-cj",
+    "storage_bucket": "swipehire-app-cj.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:625477683819:android:21492559e3b9bb55043f2e",
+        "android_client_info": {
+          "package_name": "com.hiringapp.hiring_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCf2RiZ-ddwI_7oi5avLjZCFB4vE-9jbrU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
