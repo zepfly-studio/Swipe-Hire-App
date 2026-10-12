@@ -46,3 +46,6 @@ app.*.map.json
 
 # Cloud Functions
 functions/node_modules/
+
+# Claude Code session artifacts
+.claude/
