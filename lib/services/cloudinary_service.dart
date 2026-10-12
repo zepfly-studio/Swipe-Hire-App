@@ -17,8 +17,8 @@ class CloudinaryService {
 
   // TODO: fill in from the Cloudinary dashboard (Settings > Upload for the
   // preset; the cloud name is shown at the top of the dashboard itself).
-  static const String cloudName = 'YOUR_CLOUD_NAME';
-  static const String uploadPreset = 'YOUR_UPLOAD_PRESET';
+  static const String cloudName = 'osmuzyat';
+  static const String uploadPreset = 'twp0ykep';
 
   Future<String> uploadPhoto(PlatformFile file) => _upload(file, resourceType: 'image');
   Future<String> uploadResume(PlatformFile file) => _upload(file, resourceType: 'raw');
