@@ -44,8 +44,19 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Cloud Functions
-functions/node_modules/
+# Release signing secrets -- never commit the real keystore or its
+# passwords. See android/key.properties.example.
+/android/key.properties
+/android/app/*.jks
+/android/app/*.keystore
+
+# Backend
+backend/node_modules/
+backend/.env
+backend/firebase-service-account.json
+
+# Demo data seed script
+scripts/seed-demo-pipeline/node_modules/
 
 # Claude Code session artifacts
 .claude/

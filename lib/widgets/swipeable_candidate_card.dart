@@ -10,7 +10,7 @@ class SwipeableCandidateCard extends StatefulWidget {
   final Candidate candidate;
   final bool isTopCard;
 
-  /// Right drag = skip to next candidate (no save). Left drag = pass/reject.
+  /// Left drag (right-to-left) = add to wishlist. Right drag = pass/reject.
   final ValueChanged<SwipeDirection> onSwiped;
   final VoidCallback onSwipeDown;
   final VoidCallback onDoubleTap;
@@ -150,7 +150,7 @@ class _SwipeableCandidateCardState extends State<SwipeableCandidateCard>
               CandidateCardFace(
                 candidate: widget.candidate,
                 onWishlistTap: widget.isTopCard
-                    ? () => _flyOut(SwipeDirection.right, onComplete: widget.onWishlistTap)
+                    ? () => _flyOut(SwipeDirection.left, onComplete: widget.onWishlistTap)
                     : null,
                 onWatchIntro: widget.isTopCard ? widget.onSwipeDown : null,
                 onViewResume: widget.isTopCard ? widget.onDoubleTap : null,
@@ -158,23 +158,23 @@ class _SwipeableCandidateCardState extends State<SwipeableCandidateCard>
               if (likeOpacity > 0)
                 Positioned(
                   top: 40,
-                  left: 24,
+                  right: 24,
                   child: _StampBadge(
-                    label: 'NEXT ▸',
-                    color: AppColors.accentAlt,
+                    label: 'PASS',
+                    color: AppColors.reject,
                     opacity: likeOpacity,
-                    angle: -0.3,
+                    angle: 0.3,
                   ),
                 ),
               if (nopeOpacity > 0)
                 Positioned(
                   top: 40,
-                  right: 24,
+                  left: 24,
                   child: _StampBadge(
-                    label: 'PASS',
-                    color: AppColors.reject,
+                    label: '♥ WISHLIST',
+                    color: AppColors.accentAlt,
                     opacity: nopeOpacity,
-                    angle: 0.3,
+                    angle: -0.3,
                   ),
                 ),
               if (verticalOpacity > 0)

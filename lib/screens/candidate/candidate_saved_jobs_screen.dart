@@ -5,6 +5,7 @@ import '../../services/job_posting_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/fade_in_up.dart';
 import 'job_detail_screen.dart';
+import '../../widgets/trust_widgets.dart';
 
 /// The candidate's "Saved" tab: job postings they bookmarked from Browse
 /// Jobs or a job's detail page.
@@ -22,11 +23,14 @@ class CandidateSavedJobsScreen extends StatelessWidget {
           child: Text('Saved Jobs', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         ),
         Expanded(
-          child: StreamBuilder<Set<String>>(
-            stream: JobPostingService.instance.streamSavedJobIds(user.uid),
-            builder: (context, savedSnapshot) {
-              final savedIds = savedSnapshot.data ?? const <String>{};
-              if (savedIds.isEmpty) {
+          child: StreamBuilder<List<JobPosting>>(
+            stream: JobPostingService.instance.streamSavedPostings(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.accentAlt));
+              }
+              final postings = snapshot.data!;
+              if (postings.isEmpty) {
                 return FadeInUp(
                   child: const Center(
                     child: Padding(
@@ -40,29 +44,20 @@ class CandidateSavedJobsScreen extends StatelessWidget {
                   ),
                 );
               }
-              return FutureBuilder<List<JobPosting?>>(
-                future: Future.wait(savedIds.map(JobPostingService.instance.fetchById)),
-                builder: (context, postingsSnapshot) {
-                  if (!postingsSnapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator(color: AppColors.accentAlt));
-                  }
-                  final postings = postingsSnapshot.data!.whereType<JobPosting>().toList();
-                  return ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                    itemCount: postings.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final posting = postings[index];
-                      return FadeInUp(
-                        delay: Duration(milliseconds: 35 * index),
-                        child: _SavedJobTile(
-                          posting: posting,
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => JobDetailScreen(user: user, posting: posting)),
-                          ),
-                        ),
-                      );
-                    },
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                itemCount: postings.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final posting = postings[index];
+                  return FadeInUp(
+                    delay: Duration(milliseconds: 35 * index),
+                    child: _SavedJobTile(
+                      posting: posting,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => JobDetailScreen(user: user, posting: posting)),
+                      ),
+                    ),
                   );
                 },
               );
@@ -102,10 +97,24 @@ class _SavedJobTile extends StatelessWidget {
                   children: [
                     Text(posting.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                     const SizedBox(height: 2),
-                    Text(
-                      '${posting.companyName} · ${posting.location}',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: CompanyName(
+                            name: posting.companyName,
+                            verified: posting.companyVerified,
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          ),
+                        ),
+                        if (posting.location.isNotEmpty)
+                          Flexible(
+                            child: Text(
+                              ' · ${posting.location}',
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),

@@ -1,0 +1,337 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  candidate
+  recruiter
+}
+
+enum OpportunityStatus {
+  applied
+  shortlisted
+  taskAssigned
+  taskSubmitted
+  interviewScheduled
+  offered
+  rejected
+  hired
+  /// The candidate withdrew the application or declined the offer.
+  withdrawn
+}
+
+/// Where one assessment task stands. `assigned` also covers "recruiter asked
+/// for changes" (feedback is filled in); `approved` is what unlocks
+/// scheduling the interview.
+enum TaskStatus {
+  assigned
+  submitted
+  approved
+  rejected
+}
+
+enum SwipeState {
+  wishlist
+  shortlist
+  rejected
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               Role     @default(candidate)
+  company            String   @default("")
+  designation        String   @default("")
+  phone              String   @default("")
+  profileComplete    Boolean  @default(false)
+  emailVerified      Boolean  @default(false)
+  fcmToken           String?
+  /// Important updates (task assigned, interview scheduled, offer...) are
+  /// also emailed unless the person turns this off.
+  emailNotifications Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  candidateProfile         CandidateProfile?
+  companyProfile           Company?
+  notifications            Notification[]
+  taskTemplates            TaskTemplate[]
+  jobPostings              JobPosting[]
+  opportunitiesAsCandidate Opportunity[]     @relation("OpportunityCandidate")
+  opportunitiesAsRecruiter Opportunity[]     @relation("OpportunityRecruiter")
+  messages                 Message[]
+  savedJobs                SavedJob[]
+  swipes                   Swipe[]           @relation("SwipeRecruiter")
+  swipedBy                 Swipe[]           @relation("SwipeCandidate")
+
+  @@map("users")
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  purpose   String   @default("signup")
+  attempts  Int      @default(0)
+  consumed  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@map("otp_codes")
+}
+
+/// A candidate account's hiring profile -- what recruiters see on the
+/// swipe deck. One row per candidate user.
+model CandidateProfile {
+  userId            String   @id
+  age               Int      @default(0)
+  qualification     String   @default("")
+  experience        String   @default("")
+  desiredRole       String   @default("")
+  location          String   @default("")
+  skills            String[] @default([])
+  expectedSalaryLpa Float    @default(0)
+  noticePeriod      String   @default("")
+  about             String   @default("")
+  currentCompany    String   @default("")
+  currentSalaryLpa  Float    @default(0)
+  photoUrl          String   @default("")
+  resumeUrl         String   @default("")
+  introVideoUrl     String   @default("")
+  /// Lower-cased, trimmed copy of `skills`, for case-insensitive filtering.
+  skillsNormalized  String[] @default([])
+  /// `experience` ("3 years", "Fresher") as a number, for range filters.
+  experienceYears   Float    @default(0)
+  /// `noticePeriod` ("30 days", "2 months", "Immediate") in days.
+  noticeDays        Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([experienceYears])
+  @@index([expectedSalaryLpa])
+  @@map("candidate_profiles")
+}
+
+/// A role a recruiter is hiring for, browsable by every candidate.
+model JobPosting {
+  id                 String   @id @default(uuid())
+  recruiterId        String
+  title              String
+  description        String   @default("")
+  skills             String[] @default([])
+  location           String   @default("")
+  employmentType     String   @default("")
+  salaryMinLpa       Float    @default(0)
+  salaryMaxLpa       Float    @default(0)
+  /// Minimum years of experience the role asks for (0 = open to freshers).
+  minExperienceYears Float    @default(0)
+  skillsNormalized   String[] @default([])
+  isOpen             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  recruiter     User          @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  opportunities Opportunity[]
+  savedBy       SavedJob[]
+
+  @@index([recruiterId, createdAt])
+  @@index([isOpen, createdAt])
+  @@map("job_postings")
+}
+
+/// One recruiter's hiring interaction with one candidate: status,
+/// optional interview slot, optional offer. Created either by the
+/// candidate applying to a posting (status "applied") or by the recruiter
+/// adding someone from their wishlist / by email.
+model Opportunity {
+  id               String            @id @default(uuid())
+  candidateId      String
+  recruiterId      String
+  jobPostingId     String?
+  role             String            @default("")
+  status           OpportunityStatus @default(shortlisted)
+  interviewDate    DateTime?
+  interviewMode    String            @default("")
+  interviewDetails String            @default("")
+  offerSalaryLpa   Float?
+  offerJoiningDate DateTime?
+  offerNotes       String            @default("")
+
+  /// "accepted" | "declined" once the candidate answers the offer.
+  offerResponse          String?
+  offerRespondedAt       DateTime?
+  /// "confirmed" | "reschedule_requested" once the candidate answers the
+  /// interview invite; cleared whenever the interview is rescheduled.
+  interviewResponse      String?
+  interviewResponseNote  String    @default("")
+  interviewRespondedAt   DateTime?
+  /// 0 = none sent, 1 = the day-before reminder went out, 2 = the hour-before one did.
+  interviewRemindersSent Int       @default(0)
+
+  /// When each side last opened the chat; unread = messages newer than this.
+  candidateReadAt DateTime?
+  recruiterReadAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidate  User        @relation("OpportunityCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  recruiter  User        @relation("OpportunityRecruiter", fields: [recruiterId], references: [id], onDelete: Cascade)
+  jobPosting JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+  messages   Message[]
+  tasks      Task[]
+
+  @@index([candidateId, updatedAt])
+  @@index([recruiterId, updatedAt])
+  @@index([candidateId, jobPostingId])
+  @@map("opportunities")
+}
+
+/// Chat thread tied to one opportunity.
+model Message {
+  id            String   @id @default(uuid())
+  opportunityId String
+  senderId      String
+  text          String
+  /// "text" for people typing, "task" / "interview" for the automatic
+  /// messages the task and scheduling flow posts into the thread.
+  kind          String   @default("text")
+  sentAt        DateTime @default(now())
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  sender      User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId, sentAt])
+  @@map("messages")
+}
+
+/// A small assessment a recruiter assigns to a shortlisted candidate: the
+/// candidate submits an answer and/or a link, the recruiter reviews it, and
+/// only then is the interview scheduled.
+model Task {
+  id                   String     @id @default(uuid())
+  opportunityId        String
+  title                String
+  description          String     @default("")
+  link                 String     @default("")
+  dueDate              DateTime?
+  status               TaskStatus @default(assigned)
+  answer               String     @default("")
+  submissionLink       String     @default("")
+  submittedAt          DateTime?
+  /// A file the candidate attached (Cloudinary link) and its original name.
+  submissionFileUrl    String     @default("")
+  submissionFileName   String     @default("")
+  feedback             String     @default("")
+  reviewedAt           DateTime?
+  /// Set once the "due soon" reminder push has gone out, so it never repeats.
+  reminderSentAt       DateTime?
+  /// Set once the recruiter was nudged about a submission waiting for review.
+  reviewReminderSentAt DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId, createdAt])
+  @@map("tasks")
+}
+
+/// A candidate's bookmarked job postings.
+model SavedJob {
+  candidateId  String
+  jobPostingId String
+  savedAt      DateTime @default(now())
+
+  candidate  User       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+
+  @@id([candidateId, jobPostingId])
+  @@map("saved_jobs")
+}
+
+/// A recruiter's decision on a candidate from the swipe deck: wishlist,
+/// shortlist (promoted from wishlist) or rejected (passed). Any row at all
+/// means "already swiped", so the deck never shows that candidate again.
+model Swipe {
+  recruiterId String
+  candidateId String
+  state       SwipeState
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  recruiter User @relation("SwipeRecruiter", fields: [recruiterId], references: [id], onDelete: Cascade)
+  candidate User @relation("SwipeCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@id([recruiterId, candidateId])
+  @@index([recruiterId, state])
+  @@map("swipes")
+}
+
+/// A task the recruiter saved to reuse with other candidates.
+model TaskTemplate {
+  id          String   @id @default(uuid())
+  recruiterId String
+  title       String
+  description String   @default("")
+  link        String   @default("")
+  createdAt   DateTime @default(now())
+
+  recruiter User @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  @@index([recruiterId, createdAt])
+  @@map("task_templates")
+}
+
+/// The in-app inbox: every event that was also pushed, kept so it can be
+/// read later and marked as read.
+model Notification {
+  id            String    @id @default(uuid())
+  userId        String
+  type          String    @default("info")
+  title         String
+  body          String    @default("")
+  opportunityId String?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+/// A recruiter's company page. `verificationStatus` is "unverified",
+/// "pending" (manual review requested) or "verified"; a company whose
+/// website domain matches the owner's (already OTP-verified) email domain is
+/// verified automatically.
+model Company {
+  id                 String    @id @default(uuid())
+  ownerId            String    @unique
+  name               String
+  website            String    @default("")
+  about              String    @default("")
+  industry           String    @default("")
+  size               String    @default("")
+  location           String    @default("")
+  logoUrl            String    @default("")
+  verificationStatus String    @default("unverified")
+  verificationNote   String    @default("")
+  verifiedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("companies")
+}

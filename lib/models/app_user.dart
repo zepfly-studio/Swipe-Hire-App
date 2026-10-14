@@ -11,7 +11,7 @@ extension UserRoleX on UserRole {
   }
 }
 
-/// The `users/{uid}` Firestore profile backing a signed-in Firebase Auth
+/// The backend `users` row (Postgres) backing a signed-in Firebase Auth
 /// account -- holds the role that decides which home screen [AuthGate]
 /// routes to, and [profileComplete], which decides whether it routes
 /// through [CompleteProfileScreen] first.
@@ -25,6 +25,9 @@ class AppUser {
   final String phone;
   final bool profileComplete;
 
+  /// Whether important updates are also emailed.
+  final bool emailNotifications;
+
   const AppUser({
     required this.uid,
     required this.email,
@@ -34,6 +37,7 @@ class AppUser {
     this.designation = '',
     this.phone = '',
     this.profileComplete = false,
+    this.emailNotifications = true,
   });
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) {
@@ -46,6 +50,7 @@ class AppUser {
       designation: map['designation'] ?? '',
       phone: map['phone'] ?? '',
       profileComplete: map['profileComplete'] ?? false,
+      emailNotifications: map['emailNotifications'] ?? true,
     );
   }
 
@@ -58,6 +63,7 @@ class AppUser {
       'designation': designation,
       'phone': phone,
       'profileComplete': profileComplete,
+      'emailNotifications': emailNotifications,
     };
   }
 }

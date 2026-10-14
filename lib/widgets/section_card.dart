@@ -55,11 +55,14 @@ class StatusBadge extends StatelessWidget {
 
   Color get _color => switch (status) {
         OpportunityStatus.applied => AppColors.textSecondary,
-        OpportunityStatus.shortlisted => AppColors.accentAlt,
-        OpportunityStatus.interviewScheduled => const Color(0xFFFFB84D),
+        OpportunityStatus.shortlisted => AppColors.info,
+        OpportunityStatus.taskAssigned => AppColors.accent,
+        OpportunityStatus.taskSubmitted => AppColors.accentAlt,
+        OpportunityStatus.interviewScheduled => AppColors.warning,
         OpportunityStatus.offered => AppColors.like,
         OpportunityStatus.hired => AppColors.like,
         OpportunityStatus.rejected => AppColors.reject,
+        OpportunityStatus.withdrawn => AppColors.textSecondary,
       };
 
   @override

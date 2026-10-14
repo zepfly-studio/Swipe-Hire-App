@@ -8,8 +8,11 @@ import '../../widgets/candidate_card_face.dart';
 import '../../widgets/fade_in_up.dart';
 import '../auth/account_actions.dart';
 import '../auth/complete_profile_screen.dart';
+import '../legal/privacy_policy_screen.dart';
+import '../legal/terms_of_service_screen.dart';
 import '../resume_screen.dart';
 import '../video_intro_screen.dart';
+import '../../widgets/email_toggle_tile.dart';
 
 /// The candidate's "Profile" tab: avatar, a profile-completion bar, and a
 /// settings-style list of detail rows -- tapping any of them (other than
@@ -195,6 +198,29 @@ class CandidateProfileScreen extends StatelessWidget {
             value: '',
             onTap: () => showExportDataDialog(context),
           ),
+        ),
+        FadeInUp(
+          delay: const Duration(milliseconds: 300),
+          child: _DetailTile(
+            icon: Icons.privacy_tip_outlined,
+            label: 'Privacy Policy',
+            value: '',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+          ),
+        ),
+        FadeInUp(
+          delay: const Duration(milliseconds: 310),
+          child: _DetailTile(
+            icon: Icons.description_outlined,
+            label: 'Terms of Service',
+            value: '',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsOfServiceScreen())),
+          ),
+        ),
+        const SizedBox(height: 8),
+        FadeInUp(
+          delay: const Duration(milliseconds: 300),
+          child: EmailToggleTile(initialValue: user.emailNotifications),
         ),
         const SizedBox(height: 8),
         FadeInUp(

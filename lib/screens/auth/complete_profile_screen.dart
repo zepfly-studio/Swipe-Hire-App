@@ -9,9 +9,9 @@ import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
 import '../../services/error_reporter.dart';
-import '../candidate/candidate_root_shell.dart';
-import '../root_shell.dart';
+import 'auth_gate.dart';
 import 'auth_text_field.dart';
+import '../../widgets/app_toast.dart';
 
 /// Shown once, right after signup (or on a later login if the account
 /// never finished it) -- collects the remaining role-specific details
@@ -145,8 +145,22 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
+  /// Hands control back to a fresh [AuthGate], which re-reads the (now
+  /// complete) profile and routes to the right home screen. Going straight
+  /// to a shell with `pushReplacement` would remove the AuthGate that
+  /// listens for sign-out, leaving Log out unable to leave the app.
+  void _backToAuthGate() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+      (route) => false,
+    );
+  }
+
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      AppToast.warning('Some details need fixing', description: 'Check the fields marked in red and try again.');
+      return;
+    }
     setState(() => _loading = true);
     try {
       if (_isRecruiter) {
@@ -162,9 +176,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           phone: _recruiterPhone.text.trim(),
         );
         if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const RootShell()),
-        );
+        _backToAuthGate();
       } else {
         final profile = CandidateProfile(
           age: int.tryParse(_age.text.trim()) ?? 0,
@@ -194,9 +206,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
         }
         await AuthService.instance.markCandidateProfileComplete();
         if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => CandidateRootShell(user: widget.user)),
-        );
+        _backToAuthGate();
       }
     } catch (e, stackTrace) {
       ErrorReporter.report(e, stackTrace, reason: 'CompleteProfileScreen: save failed');
@@ -208,13 +218,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
 
   void _showMessage(String message, {bool isError = true}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? AppColors.reject : AppColors.surfaceAlt,
-        behavior: SnackBarBehavior.floating,
-      ));
+    AppToast.message(message, isError: isError);
   }
 
   String _formatBytes(int bytes) {
@@ -289,7 +293,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           textInputAction: TextInputAction.next,
           style: const TextStyle(color: AppColors.textPrimary),
           decoration: authFieldDecoration('Designation', Icons.badge_outlined),
-          validator: requiredValidator,
+          validator: designationValidator,
         ),
       ),
       const SizedBox(height: 14),
@@ -302,7 +306,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           onFieldSubmitted: (_) => _submit(),
           style: const TextStyle(color: AppColors.textPrimary),
           decoration: authFieldDecoration('Phone', Icons.phone_outlined),
-          validator: requiredValidator,
+          validator: phoneValidator,
         ),
       ),
       const SizedBox(height: 26),

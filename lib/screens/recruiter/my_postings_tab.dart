@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../models/job_posting.dart';
+import '../../services/analytics_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/error_reporter.dart';
 import '../../services/job_posting_service.dart';
 import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/fade_in_up.dart';
+import '../../widgets/app_toast.dart';
+import '../../widgets/trust_widgets.dart';
+import 'applicants_screen.dart';
 
 /// Recruiter's "My Postings" tab: the roles they're hiring for, which show
 /// up on every candidate's "Browse Jobs" tab while open. Tap one to edit
@@ -15,7 +19,7 @@ class MyPostingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recruiterUid = AuthService.instance.currentUser!.uid;
+    final recruiterUid = AuthService.instance.currentUid;
     return Stack(
       children: [
         StreamBuilder<List<JobPosting>>(
@@ -44,7 +48,13 @@ class MyPostingsTab extends StatelessWidget {
                 final posting = postings[index];
                 return FadeInUp(
                   delay: Duration(milliseconds: 40 * index),
-                  child: _PostingTile(posting: posting, onTap: () => _openEditor(context, existing: posting)),
+                  child: _PostingTile(
+                    posting: posting,
+                    onTap: () => _openEditor(context, existing: posting),
+                    onApplicants: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => ApplicantsScreen(posting: posting)),
+                    ),
+                  ),
                 );
               },
             );
@@ -72,7 +82,8 @@ class MyPostingsTab extends StatelessWidget {
 class _PostingTile extends StatelessWidget {
   final JobPosting posting;
   final VoidCallback onTap;
-  const _PostingTile({required this.posting, required this.onTap});
+  final VoidCallback onApplicants;
+  const _PostingTile({required this.posting, required this.onTap, required this.onApplicants});
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +144,26 @@ class _PostingTile extends StatelessWidget {
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accentAlt),
                 ),
               ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: StatePill(
+                      label: (posting.applicantsCount ?? 0) == 0
+                          ? 'No applicants yet'
+                          : '${posting.applicantsCount} applicant${posting.applicantsCount == 1 ? '' : 's'}',
+                      color: (posting.applicantsCount ?? 0) == 0 ? AppColors.textSecondary : AppColors.accent,
+                      icon: Icons.groups_rounded,
+                    ),
+                  ),
+                  if ((posting.applicantsCount ?? 0) > 0)
+                    FilledButton.tonal(
+                      onPressed: onApplicants,
+                      style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                      child: const Text('View applicants'),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -155,9 +186,10 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
   final _description = TextEditingController();
   final _skills = TextEditingController();
   final _location = TextEditingController();
-  final _employmentType = TextEditingController(text: 'Full Time');
+  final _employmentType = TextEditingController(text: 'Full-time');
   final _salaryMin = TextEditingController();
   final _salaryMax = TextEditingController();
+  final _minExperience = TextEditingController();
 
   bool _saving = false;
 
@@ -176,6 +208,7 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
       _employmentType.text = existing.employmentType;
       _salaryMin.text = existing.salaryMinLpa > 0 ? existing.salaryMinLpa.toString() : '';
       _salaryMax.text = existing.salaryMaxLpa > 0 ? existing.salaryMaxLpa.toString() : '';
+      _minExperience.text = existing.minExperienceYears > 0 ? existing.minExperienceYears.toString() : '';
     }
   }
 
@@ -188,6 +221,7 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
     _employmentType.dispose();
     _salaryMin.dispose();
     _salaryMax.dispose();
+    _minExperience.dispose();
     super.dispose();
   }
 
@@ -197,7 +231,7 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
     final recruiter = RecruiterProfileService.instance;
     final posting = JobPosting(
       id: _existing?.id ?? '',
-      recruiterUid: AuthService.instance.currentUser!.uid,
+      recruiterUid: AuthService.instance.currentUid,
       recruiterName: recruiter.name,
       companyName: recruiter.company.isEmpty ? 'Hiring company' : recruiter.company,
       title: _title.text.trim(),
@@ -207,6 +241,7 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
       employmentType: _employmentType.text.trim(),
       salaryMinLpa: double.tryParse(_salaryMin.text.trim()) ?? 0,
       salaryMaxLpa: double.tryParse(_salaryMax.text.trim()) ?? 0,
+      minExperienceYears: double.tryParse(_minExperience.text.trim()) ?? 0,
       isOpen: _existing?.isOpen ?? true,
       createdAt: _existing?.createdAt,
     );
@@ -215,16 +250,15 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
       if (_isEditMode) {
         await JobPostingService.instance.update(posting);
       } else {
-        await JobPostingService.instance.create(posting);
+        final postingId = await JobPostingService.instance.create(posting);
+        AnalyticsService.instance.logJobPosted(jobPostingId: postingId);
       }
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (e, stackTrace) {
       ErrorReporter.report(e, stackTrace, reason: 'MyPostingsTab: save job posting failed');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save. Please try again.'), backgroundColor: AppColors.reject),
-      );
+      AppToast.error('Could not save. Please try again.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -338,6 +372,19 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _minExperience,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(color: AppColors.textPrimary),
+                        decoration: _decoration('Minimum experience (years, 0 = freshers welcome)', Icons.timeline_rounded),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return null;
+                          final n = double.tryParse(value);
+                          return (n == null || n < 0 || n > 40) ? 'Enter a number of years' : null;
+                        },
                       ),
                       const SizedBox(height: 26),
                       FilledButton(

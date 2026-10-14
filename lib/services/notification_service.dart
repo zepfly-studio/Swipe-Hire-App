@@ -1,13 +1,14 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'api_client.dart';
+import '../widgets/app_toast.dart';
 import 'error_reporter.dart';
 
 /// Registers the signed-in device for push notifications -- saves its FCM
-/// token to `users/{uid}.fcmToken`, which the `notifyCandidateOnOpportunityChange`
-/// Cloud Function reads to push a notification whenever a recruiter
-/// changes a candidate's [Opportunity] status (shortlisted, interview
-/// scheduled, offered, ...).
+/// token to the backend (`PUT /users/me/fcm-token`), which the backend
+/// reads to push a notification whenever a recruiter changes a candidate's
+/// [Opportunity] status, a candidate applies, or either side sends a chat
+/// message.
 ///
 /// Web is skipped entirely: `getToken()` there needs a VAPID key
 /// registered in the Firebase console first (Cloud Messaging > Web
@@ -27,15 +28,31 @@ class NotificationService {
       await _messaging.requestPermission();
       final token = await _messaging.getToken();
       if (token != null) {
-        await _saveToken(uid, token);
+        await _saveToken(token);
       }
-      _messaging.onTokenRefresh.listen((newToken) => _saveToken(uid, newToken));
+      _messaging.onTokenRefresh.listen(_saveToken);
+
+      // A push that arrives while the app is open isn't shown by the OS, so
+      // show it as an in-app toast instead.
+      FirebaseMessaging.onMessage.listen((message) {
+        final title = message.notification?.title;
+        if (title == null || title.isEmpty) return;
+        AppToast.notification(
+          title: title,
+          body: message.notification?.body,
+          type: message.data['type'] ?? message.data['status'],
+        );
+      });
     } catch (e, stackTrace) {
       ErrorReporter.report(e, stackTrace, reason: 'NotificationService: init failed');
     }
   }
 
-  Future<void> _saveToken(String uid, String token) {
-    return FirebaseFirestore.instance.collection('users').doc(uid).update({'fcmToken': token});
+  Future<void> _saveToken(String token) async {
+    try {
+      await ApiClient.instance.put('/users/me/fcm-token', body: {'token': token});
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'NotificationService: save token failed');
+    }
   }
 }

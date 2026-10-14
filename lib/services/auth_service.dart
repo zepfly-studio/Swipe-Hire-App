@@ -1,50 +1,118 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/app_user.dart';
-import 'error_reporter.dart';
+import 'dart:async';
 
-/// Wraps Firebase Auth (email/password) together with the `users/{uid}`
-/// Firestore profile that records which of the two account types --
-/// recruiter or candidate -- a signed-in user is.
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import '../models/app_user.dart';
+import 'api_client.dart';
+import 'in_app_notifier.dart';
+import 'inbox_service.dart';
+import 'wishlist_service.dart';
+
+/// A first-time Google account has to say whether it is a recruiter or a
+/// candidate; the sign-in screen asks and calls
+/// [AuthService.signInWithGoogle] again with a role.
+class GoogleSignInNeedsRole implements Exception {
+  const GoogleSignInNeedsRole();
+}
+
+/// Email/password accounts live in the Node/Postgres backend (`backend/`),
+/// reached through [ApiClient]. Firebase Auth is kept only as the app's
+/// session (what [AuthGate] listens to): the backend mints a custom token
+/// for the same uid and this signs into Firebase with it. Every other piece
+/// of data lives in Postgres behind the backend -- nothing is mirrored to
+/// Firebase.
 class AuthService {
-  AuthService._internal();
+  AuthService._internal({FirebaseAuth? auth, ApiClient? api})
+      : _auth = auth ?? FirebaseAuth.instance,
+        _api = api ?? ApiClient.instance {
+    // A request answered with 401 means the saved session expired: sign out
+    // so the user is sent to the login screen.
+    _api.onUnauthorized = () => unawaited(signOut());
+  }
   static final AuthService instance = AuthService._internal();
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final CollectionReference<Map<String, dynamic>> _users =
-      FirebaseFirestore.instance.collection('users');
+  /// Builds an instance wired to injected fakes -- used only by tests, never
+  /// by app code, which should always go through [instance].
+  @visibleForTesting
+  factory AuthService.test({required FirebaseAuth auth, required ApiClient api}) =>
+      AuthService._internal(auth: auth, api: api);
 
-  /// Backed by [FirebaseAuth.userChanges] rather than [FirebaseAuth.authStateChanges]
-  /// so that [reloadUser] (called after the user confirms their email) emits
-  /// a fresh [User] with the updated `emailVerified` flag -- `authStateChanges`
-  /// only fires on sign-in/out and would never notice that change.
-  Stream<User?> get authStateChanges => _auth.userChanges();
+  final FirebaseAuth _auth;
+  final ApiClient _api;
+
+  /// Produces the Firebase ID token for "Continue with Google", or null if
+  /// the person closed the Google window. Replaced in tests.
+  @visibleForTesting
+  Future<String?> Function()? googleIdTokenProvider;
+
+  /// Emits on sign-in and sign-out.
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
   User? get currentUser => _auth.currentUser;
 
-  Future<AppUser?> fetchProfile(String uid) async {
-    final doc = await _users.doc(uid).get();
-    if (!doc.exists || doc.data() == null) return null;
-    return AppUser.fromMap(uid, doc.data()!);
+  /// The signed-in account's id, or an empty string while signed out. Safe
+  /// to read from a screen that may rebuild during sign-out.
+  String get currentUid => _auth.currentUser?.uid ?? '';
+
+  /// Maps backend/network failures onto [FirebaseAuthException] so the auth
+  /// screens' existing `on FirebaseAuthException` handling (and
+  /// `authErrorMessage`) keeps working unchanged.
+  Future<T> _guard<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on ApiException catch (e) {
+      if (e.isNetworkError) {
+        throw FirebaseAuthException(code: 'network-request-failed', message: e.message);
+      }
+      throw FirebaseAuthException(code: 'backend-error', message: e.message);
+    }
   }
 
-  /// Same as [fetchProfile], but retries briefly before giving up. Right
-  /// after [signUp] creates the Firebase Auth user, [AuthGate]'s listener
-  /// fires and tries to read the profile before our own `users/{uid}`
-  /// write (a few lines later in the same call) has landed -- without
-  /// this grace window AuthGate would treat that in-flight signup as a
-  /// stale/corrupt account and sign it back out mid-signup.
+  AppUser _profileFrom(Map<String, dynamic> user) => AppUser.fromMap(user['uid'] as String, user);
+
+  /// The backend profile for the signed-in account, or null if there's no
+  /// valid saved session or it belongs to a different uid than Firebase's.
+  /// Throws an [ApiException] when the server can't be reached.
+  Future<AppUser?> fetchProfile(String uid) async {
+    final user = await _api.fetchMe();
+    if (user == null || user['uid'] != uid) return null;
+    return _profileFrom(user);
+  }
+
+  /// Same as [fetchProfile], but retries a few times when the server can't
+  /// be reached (or is erroring) before giving up, so a flaky connection at
+  /// launch doesn't fail the whole app. The last error is rethrown, which
+  /// [AuthGate] shows as a "can't connect" screen -- it never signs the
+  /// user out just because the network was down.
   Future<AppUser?> fetchProfileWithRetry(
     String uid, {
-    int attempts = 6,
-    Duration gap = const Duration(milliseconds: 350),
+    int attempts = 3,
+    Duration gap = const Duration(milliseconds: 800),
   }) async {
-    for (var i = 0; i < attempts; i++) {
-      final profile = await fetchProfile(uid);
-      if (profile != null) return profile;
-      if (i < attempts - 1) await Future.delayed(gap);
+    for (var i = 0;; i++) {
+      try {
+        return await fetchProfile(uid);
+      } on ApiException catch (e) {
+        final retryable = e.isNetworkError || e.isServerError;
+        if (!retryable || i >= attempts - 1) rethrow;
+      }
+      await Future.delayed(gap);
     }
-    return null;
   }
+
+  /// Sends a 6-digit email OTP for [SignupScreen]'s pre-account-creation
+  /// verification step. Call [verifySignupOtp] with the code the user
+  /// enters, then [signUp] -- in that order, the account is only ever
+  /// created for an email that's already passed OTP verification.
+  ///
+  /// Returns the code itself while the backend runs without an email
+  /// provider (dev mode), so the screen can show it; empty otherwise.
+  Future<String> sendSignupOtp(String email) => _guard(() => _api.sendSignupOtp(email.trim()));
+
+  /// Verifies the code from [sendSignupOtp]. Throws a [FirebaseAuthException]
+  /// with a message suitable for display if the code is wrong, expired, or
+  /// the attempt limit was hit.
+  Future<void> verifySignupOtp({required String email, required String otp}) =>
+      _guard(() => _api.verifySignupOtp(email: email.trim(), otp: otp.trim()));
 
   Future<AppUser> signUp({
     required String name,
@@ -53,66 +121,64 @@ class AuthService {
     required UserRole role,
     String company = '',
   }) async {
-    final credential = await _auth.createUserWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
-    final user = credential.user!;
-    await user.updateDisplayName(name.trim());
-    try {
-      await user.sendEmailVerification();
-    } catch (e, stackTrace) {
-      // Non-critical -- the user can resend from VerifyEmailScreen, so a
-      // flaky send here shouldn't block account creation.
-      ErrorReporter.report(e, stackTrace, reason: 'signUp: sendEmailVerification failed');
-    }
-
-    final profile = AppUser(
-      uid: user.uid,
-      email: email.trim(),
-      name: name.trim(),
-      role: role,
-      company: company.trim(),
-    );
-    await _users.doc(user.uid).set({
-      ...profile.toMap(),
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    return profile;
+    final session = await _guard(() => _api.signUp(
+          name: name.trim(),
+          email: email.trim(),
+          password: password,
+          role: role.value,
+          company: company.trim(),
+        ));
+    await _auth.signInWithCustomToken(session.firebaseToken);
+    return _profileFrom(session.user);
   }
 
   Future<AppUser> signIn({required String email, required String password}) async {
-    final credential = await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
-    final profile = await fetchProfile(credential.user!.uid);
-    if (profile == null) {
-      throw FirebaseAuthException(
-        code: 'profile-missing',
-        message: 'No account profile found for this user.',
-      );
+    final session = await _guard(() => _api.signIn(email: email.trim(), password: password));
+    await _auth.signInWithCustomToken(session.firebaseToken);
+    return _profileFrom(session.user);
+  }
+
+  /// "Continue with Google": signs into Firebase with Google, then trades
+  /// that ID token for a normal SwipeHire session. Returns null if the
+  /// person closed the Google window. Throws [GoogleSignInNeedsRole] for a
+  /// first-time account until [role] is given.
+  Future<AppUser?> signInWithGoogle({UserRole? role}) async {
+    final idToken = await (googleIdTokenProvider ?? _googleIdToken)();
+    if (idToken == null) return null;
+    try {
+      final session = await _api.googleSignIn(idToken: idToken, role: role?.value);
+      await _auth.signInWithCustomToken(session.firebaseToken);
+      return _profileFrom(session.user);
+    } on ApiException catch (e) {
+      if (e.statusCode == 409 && e.body['needsRole'] == true) throw const GoogleSignInNeedsRole();
+      if (e.isNetworkError) {
+        throw FirebaseAuthException(code: 'network-request-failed', message: e.message);
+      }
+      throw FirebaseAuthException(code: 'backend-error', message: e.message);
     }
-    return profile;
   }
 
-  Future<void> sendPasswordReset(String email) {
-    return _auth.sendPasswordResetEmail(email: email.trim());
+  Future<String?> _googleIdToken() async {
+    final provider = GoogleAuthProvider()..addScope('email');
+    try {
+      final credential = kIsWeb ? await _auth.signInWithPopup(provider) : await _auth.signInWithProvider(provider);
+      return await credential.user?.getIdToken();
+    } on FirebaseAuthException catch (e) {
+      const cancelled = {'popup-closed-by-user', 'cancelled-popup-request', 'web-context-canceled', 'canceled'};
+      if (cancelled.contains(e.code)) return null;
+      rethrow;
+    }
   }
 
-  /// Re-sends the verification link to the signed-in user's own email --
-  /// used by [VerifyEmailScreen]'s "Resend" action.
-  Future<void> resendVerificationEmail() {
-    final user = currentUser;
-    if (user == null) return Future.value();
-    return user.sendEmailVerification();
-  }
+  /// Starts the forgot-password flow; returns the dev-mode OTP like
+  /// [sendSignupOtp]. Follow with [resetPassword].
+  Future<String> sendPasswordReset(String email) => _guard(() => _api.forgotPassword(email.trim()));
 
-  /// Refreshes the signed-in user's token/profile from the server (picks
-  /// up `emailVerified` after the link is clicked) and re-emits on
-  /// [authStateChanges] so [AuthGate] reacts without a manual navigation.
-  Future<void> reloadUser() async {
-    await currentUser?.reload();
+  Future<void> resetPassword({required String email, required String otp, required String newPassword}) =>
+      _guard(() => _api.resetPassword(email: email.trim(), otp: otp.trim(), newPassword: newPassword));
+
+  Future<void> _updateProfile(Map<String, dynamic> fields) async {
+    await _guard(() => _api.updateMe(fields));
   }
 
   /// Saves the remaining recruiter details collected on
@@ -121,50 +187,64 @@ class AuthService {
     required String designation,
     required String phone,
   }) {
-    final uid = currentUser!.uid;
-    return _users.doc(uid).update({
+    return _updateProfile({
       'designation': designation.trim(),
       'phone': phone.trim(),
       'profileComplete': true,
     });
   }
 
+  /// Updates the recruiter's own profile fields from [ProfileScreen].
+  Future<void> updateRecruiterProfile({
+    required String name,
+    required String designation,
+    required String company,
+    required String phone,
+  }) {
+    return _updateProfile({
+      'name': name.trim(),
+      'designation': designation.trim(),
+      'company': company.trim(),
+      'phone': phone.trim(),
+    });
+  }
+
+  /// Turns the emails that go with notifications on or off.
+  Future<void> setEmailNotifications(bool enabled) => _updateProfile({'emailNotifications': enabled});
+
   /// Marks the account ready for [CandidateRootShell] once
   /// [CandidateProfileService.save] has written the candidate's details.
-  Future<void> markCandidateProfileComplete() {
-    final uid = currentUser!.uid;
-    return _users.doc(uid).update({'profileComplete': true});
+  Future<void> markCandidateProfileComplete() => _updateProfile({'profileComplete': true});
+
+  Future<void> signOut() async {
+    WishlistService.instance.clear();
+    InAppNotifier.instance.stop();
+    InboxService.instance.stop();
+    await _api.signOut();
+    await _auth.signOut();
   }
 
-  Future<void> signOut() => _auth.signOut();
-
-  /// Re-authenticates with a fresh password before a sensitive action
-  /// (here, [deleteAccount]) that Firebase Auth refuses on an old sign-in
-  /// session with `requires-recent-login`.
+  /// Confirms the password with the backend and refreshes the Firebase
+  /// session with a new custom token, for use before a sensitive action.
   Future<void> reauthenticateWithPassword(String password) async {
-    final user = currentUser;
-    if (user == null || user.email == null) return;
-    final credential = EmailAuthProvider.credential(email: user.email!, password: password);
-    await user.reauthenticateWithCredential(credential);
+    final firebaseToken = await _guard(() => _api.reauth(password));
+    await _auth.signInWithCustomToken(firebaseToken);
   }
 
-  /// Deletes everything this account owns -- its `users/{uid}` profile,
-  /// its `candidate_profiles/{uid}` doc (a no-op if it's a recruiter, who
-  /// never had one), and finally the Firebase Auth account itself. Does
-  /// NOT delete `opportunities` docs a recruiter created about this
-  /// candidate, or Storage files -- those are the recruiter's own hiring
-  /// records, not this account's data to erase.
+  /// Deletes the account on the backend, which cascades to everything it
+  /// owns in Postgres (candidate profile, saved jobs, every opportunity
+  /// where it's the candidate OR the recruiter side plus their chat
+  /// messages, job postings, swipes) and removes the Firebase Auth record.
   ///
-  /// Throws the underlying [FirebaseAuthException] (code
-  /// `requires-recent-login`) if the sign-in is too old; the caller should
-  /// catch that, prompt for the password via [reauthenticateWithPassword],
-  /// then retry.
+  /// Does NOT delete the Cloudinary-hosted photo/resume/video files this
+  /// account uploaded -- that needs a signed server-side call (the API
+  /// secret can't live in this app), tracked separately; see
+  /// docs/cloudinary-setup.md. Those files become unreferenced but remain
+  /// on Cloudinary after this runs.
   Future<void> deleteAccount() async {
     final user = currentUser;
     if (user == null) return;
-    final uid = user.uid;
-    await _users.doc(uid).delete();
-    await FirebaseFirestore.instance.collection('candidate_profiles').doc(uid).delete();
-    await user.delete();
+    await _guard(_api.deleteMe);
+    await signOut();
   }
 }

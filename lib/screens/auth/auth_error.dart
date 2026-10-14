@@ -16,7 +16,7 @@ String authErrorMessage(FirebaseAuthException e) {
     case 'email-already-in-use':
       return 'An account already exists with that email. Try logging in instead.';
     case 'weak-password':
-      return 'Choose a stronger password (at least 6 characters).';
+      return 'Choose a stronger password (at least 8 characters).';
     case 'too-many-requests':
       return 'Too many attempts. Please wait a moment and try again.';
     case 'network-request-failed':

@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../models/app_user.dart';
+import '../../services/analytics_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/error_reporter.dart';
 import '../../theme/app_theme.dart';
@@ -7,7 +9,10 @@ import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
 import 'auth_error.dart';
 import 'auth_text_field.dart';
+import 'google_sign_in_button.dart';
+import 'reset_password_screen.dart';
 import 'signup_screen.dart';
+import '../../widgets/app_toast.dart';
 
 /// Email/password sign-in. On success, [AuthService.authStateChanges] fires
 /// and [AuthGate] takes over navigation -- this screen never has to know
@@ -37,7 +42,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await AuthService.instance.signIn(email: _email.text, password: _password.text);
+      final profile = await AuthService.instance.signIn(email: _email.text, password: _password.text);
+      AnalyticsService.instance.logLogin(role: profile.role.value);
     } on FirebaseAuthException catch (e) {
       _showMessage(authErrorMessage(e), isError: true);
     } catch (e, stackTrace) {
@@ -53,24 +59,28 @@ class _LoginScreenState extends State<LoginScreen> {
       _showMessage('Enter your email above first, then tap "Forgot password?".', isError: true);
       return;
     }
+    setState(() => _loading = true);
     try {
-      await AuthService.instance.sendPasswordReset(_email.text);
+      final devOtp = await AuthService.instance.sendPasswordReset(_email.text);
       if (!mounted) return;
-      _showMessage('Password reset link sent to ${_email.text.trim()}');
+      setState(() => _loading = false);
+      final reset = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => ResetPasswordScreen(email: _email.text.trim(), devOtp: devOtp)),
+      );
+      if (reset == true) _showMessage('Password updated. Log in with your new password.');
     } on FirebaseAuthException catch (e) {
       _showMessage(authErrorMessage(e), isError: true);
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'LoginScreen: password reset failed');
+      _showMessage('Something went wrong. Please try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   void _showMessage(String message, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? AppColors.reject : AppColors.surfaceAlt,
-        behavior: SnackBarBehavior.floating,
-      ));
+    AppToast.message(message, isError: isError);
   }
 
   @override
@@ -142,6 +152,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             : const Text('Log In'),
                       ),
                     ),
+                    const SizedBox(height: 18),
+                    FadeInUp(
+                      delay: const Duration(milliseconds: 170),
+                      child: GoogleSignInButton(enabled: !_loading),
+                    ),
                     const SizedBox(height: 22),
                     FadeInUp(
                       delay: const Duration(milliseconds: 180),
@@ -176,17 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildLogo() {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: AppColors.accentGradient,
-            borderRadius: BorderRadius.circular(26),
-            boxShadow: [
-              BoxShadow(color: AppColors.accent.withValues(alpha: 0.45), blurRadius: 26, offset: const Offset(0, 10)),
-            ],
-          ),
-          child: const Icon(Icons.bolt, color: Colors.white, size: 40),
-        ),
+        Image.asset('assets/images/logo_full.png', width: 280, filterQuality: FilterQuality.high),
         const SizedBox(height: 18),
         const Text('Welcome back', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),

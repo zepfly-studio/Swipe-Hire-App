@@ -4,6 +4,7 @@ import '../../models/candidate_profile.dart';
 import '../../services/auth_service.dart';
 import '../../services/candidate_profile_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/derive.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
 import 'candidate_applications_screen.dart';
@@ -11,6 +12,8 @@ import 'candidate_dashboard_screen.dart';
 import 'candidate_jobs_screen.dart';
 import 'candidate_profile_screen.dart';
 import 'candidate_saved_jobs_screen.dart';
+import '../../widgets/app_toast.dart';
+import '../../widgets/notification_bell.dart';
 
 /// Bottom-nav shell for a candidate account: Dashboard, Browse Jobs, My
 /// Applications, Saved and Profile. Mirrors the recruiter's [RootShell]
@@ -38,13 +41,7 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
 
   void _onProfileUpdated(CandidateProfile updated) {
     setState(() => _profileFuture = Future.value(updated));
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('Profile updated'),
-        backgroundColor: AppColors.surfaceAlt,
-        behavior: SnackBarBehavior.floating,
-      ));
+    AppToast.success('Profile updated', description: 'Recruiters see your latest details on their swipe deck.');
   }
 
   @override
@@ -66,7 +63,7 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
                 index: _index,
                 children: [
                   CandidateDashboardScreen(user: widget.user, profile: profile, onViewAllApplications: () => _goTo(2)),
-                  CandidateJobsScreen(user: widget.user),
+                  CandidateJobsScreen(user: widget.user, myExperienceYears: profile.experience.isEmpty ? null : parseExperienceYears(profile.experience)),
                   CandidateApplicationsScreen(user: widget.user),
                   CandidateSavedJobsScreen(user: widget.user),
                   CandidateProfileScreen(user: widget.user, profile: profile, onProfileUpdated: _onProfileUpdated),
@@ -96,7 +93,11 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
           destinations: const [
             NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
             NavigationDestination(icon: Icon(Icons.work_outline_rounded), selectedIcon: Icon(Icons.work_rounded), label: 'Jobs'),
-            NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description_rounded), label: 'Applications'),
+            NavigationDestination(
+              icon: UnreadChatIcon(icon: Icons.description_outlined),
+              selectedIcon: UnreadChatIcon(icon: Icons.description_rounded),
+              label: 'Applications',
+            ),
             NavigationDestination(icon: Icon(Icons.bookmark_border_rounded), selectedIcon: Icon(Icons.bookmark_rounded), label: 'Saved'),
             NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
           ],
@@ -107,7 +108,7 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
 }
 
 /// Defensive fallback: a signed-in candidate whose profile doc is missing
-/// (e.g. deleted directly in Firestore) instead of a blank/broken screen.
+/// (e.g. deleted directly in the database) instead of a blank/broken screen.
 class _MissingProfileState extends StatelessWidget {
   final AppUser user;
   const _MissingProfileState({required this.user});

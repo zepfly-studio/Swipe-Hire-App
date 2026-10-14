@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/job_posting.dart';
+import '../../services/analytics_service.dart';
 import '../../services/error_reporter.dart';
 import '../../services/job_posting_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
 import '../../widgets/section_card.dart';
+import '../../widgets/app_toast.dart';
+import '../../widgets/trust_widgets.dart';
+import 'company_page_screen.dart';
 
 /// Full detail of one [JobPosting] -- apply, or save it for later. Reached
 /// from either the "Browse Jobs" or "Saved" tab.
@@ -28,12 +32,28 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   @override
   void initState() {
     super.initState();
-    JobPostingService.instance.hasApplied(widget.user.uid, widget.posting.id).then((applied) {
-      if (mounted) setState(() => _applied = applied);
-    });
-    JobPostingService.instance.streamSavedJobIds(widget.user.uid).first.then((ids) {
-      if (mounted) setState(() => _saved = ids.contains(widget.posting.id));
-    });
+    _loadState();
+  }
+
+  /// Whether this candidate already applied to / saved the posting. A
+  /// failure leaves the buttons in their loading state rather than crashing.
+  Future<void> _loadState() async {
+    try {
+      final applied = await JobPostingService.instance.hasApplied(widget.user.uid, widget.posting.id);
+      final saved = await JobPostingService.instance.fetchSavedJobIds();
+      if (!mounted) return;
+      setState(() {
+        _applied = applied;
+        _saved = saved.contains(widget.posting.id);
+      });
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'JobDetailScreen: load state failed');
+      if (!mounted) return;
+      setState(() {
+        _applied = false;
+        _saved = false;
+      });
+    }
   }
 
   Future<void> _toggleSave() async {
@@ -61,25 +81,21 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
         candidateUid: widget.user.uid,
         candidateName: widget.user.name,
       );
+      AnalyticsService.instance.logJobApply(
+        jobPostingId: widget.posting.id,
+        companyName: widget.posting.companyName,
+      );
       if (!mounted) return;
       setState(() {
         _applied = true;
         _applying = false;
       });
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text('Application sent!'),
-          backgroundColor: AppColors.surfaceAlt,
-          behavior: SnackBarBehavior.floating,
-        ));
+      AppToast.success('Application sent', description: 'The recruiter can see your profile now. Updates will show up here.');
     } catch (e, stackTrace) {
       ErrorReporter.report(e, stackTrace, reason: 'JobDetailScreen: apply failed');
       if (!mounted) return;
       setState(() => _applying = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not apply. Please try again.'), backgroundColor: AppColors.reject),
-      );
+      AppToast.error('Could not apply. Please try again.');
     }
   }
 
@@ -120,9 +136,32 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                           children: [
                             Text(posting.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 4),
-                            Text(
-                              posting.companyName,
-                              style: const TextStyle(color: AppColors.accentAlt, fontSize: 15, fontWeight: FontWeight.w600),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: posting.companyId.isEmpty
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => CompanyPageScreen(user: widget.user, companyId: posting.companyId),
+                                        ),
+                                      ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: CompanyName(
+                                        name: posting.companyName.isEmpty ? 'Company' : posting.companyName,
+                                        verified: posting.companyVerified,
+                                        style: const TextStyle(color: AppColors.accentAlt, fontSize: 15, fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                    if (posting.companyId.isNotEmpty)
+                                      const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.accentAlt),
+                                  ],
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -138,9 +177,45 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                             if (posting.employmentType.isNotEmpty) _chip(Icons.schedule_outlined, posting.employmentType),
                             if (posting.salaryMinLpa > 0 || posting.salaryMaxLpa > 0)
                               _chip(Icons.payments_outlined, '₹${posting.salaryMinLpa.toStringAsFixed(1)}-${posting.salaryMaxLpa.toStringAsFixed(1)} LPA'),
+                            _chip(
+                              Icons.timeline_rounded,
+                              posting.minExperienceYears <= 0
+                                  ? 'Freshers welcome'
+                                  : '${posting.minExperienceYears.toStringAsFixed(posting.minExperienceYears % 1 == 0 ? 0 : 1)}+ years',
+                            ),
                           ],
                         ),
                       ),
+                      if (posting.matchScore != null) ...[
+                        const SizedBox(height: 16),
+                        FadeInUp(
+                          delay: const Duration(milliseconds: 60),
+                          child: SectionCard(
+                            title: 'How you match',
+                            icon: Icons.auto_graph_rounded,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MatchChip(score: posting.matchScore!),
+                                if (posting.matchReasons.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  for (final reason in posting.matchReasons)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.check_rounded, size: 16, color: AppColors.like),
+                                          const SizedBox(width: 6),
+                                          Expanded(child: Text(reason[0].toUpperCase() + reason.substring(1), style: const TextStyle(fontSize: 13))),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       FadeInUp(
                         delay: const Duration(milliseconds: 80),

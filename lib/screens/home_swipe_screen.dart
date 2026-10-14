@@ -1,25 +1,26 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/candidate.dart';
+import '../services/analytics_service.dart';
 import '../services/candidate_service.dart';
 import '../services/error_reporter.dart';
-import '../services/mock_candidates.dart';
 import '../services/recruiter_profile_service.dart';
 import '../services/wishlist_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/candidate_card_face.dart';
 import '../widgets/fade_in_up.dart';
+import '../widgets/notification_bell.dart';
 import '../widgets/page_transitions.dart';
 import '../widgets/swipeable_candidate_card.dart';
+import 'recruiter/deck_filters_sheet.dart';
 import 'resume_screen.dart';
 import 'search_screen.dart';
 import 'video_intro_screen.dart';
+import '../widgets/app_toast.dart';
 
-/// Discover tab: a header (brand + search + recruiter avatar), a queue
-/// stats bar, the swipe deck, and an explicit row of Pass/Watch/Wishlist
-/// buttons below it (the same actions the swipe gestures already trigger,
-/// for recruiters who'd rather tap than drag).
+/// Discover tab: a header (brand + search + recruiter avatar) and the
+/// swipe deck -- swipe left (or tap the card's heart button) to wishlist
+/// a candidate, swipe right to pass.
 class HomeSwipeScreen extends StatefulWidget {
   final VoidCallback onViewWishlist;
 
@@ -34,13 +35,13 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
   bool _loading = true;
   bool _loadingMore = false;
 
-  // Pagination state for the real (Firestore-backed) deck -- `null`
-  // lastDoc + hasMore=true means "haven't fetched a page yet". Once we
-  // fall back to the local mock sample (no real candidates exist), there's
-  // nothing to paginate, so _hasMore stays false.
-  DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
+  // Pagination cursor (the last candidate id of the previous page) --
+  // `null` cursor + hasMore=true means "haven't fetched a page yet".
+  String? _cursor;
   bool _hasMore = true;
-  bool _usingMockFallback = false;
+
+  /// What the recruiter narrowed the deck down to; applied by the server.
+  CandidateFilters _filters = const CandidateFilters();
 
   /// Below this many un-swiped cards left in the deck, fetch the next page
   /// so the recruiter never actually runs dry mid-swipe.
@@ -55,18 +56,15 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
   Future<void> _loadFirstPage() async {
     List<Candidate> loaded = [];
     try {
-      final page = await CandidateService.instance.fetchCandidatesPage();
+      // The funnel (wishlist/shortlist/rejected) comes from the backend on
+      // sign-in; wait for it so already-swiped cards never flash in.
+      await WishlistService.instance.ensureLoaded();
+      final page = await CandidateService.instance.fetchCandidatesPage(filters: _filters);
       loaded = page.candidates;
-      _lastDoc = page.lastDoc;
+      _cursor = page.nextCursor;
       _hasMore = page.hasMore;
     } catch (e, stackTrace) {
-      // Offline, or a permissions/config issue -- fall back to sample data
-      // so the app stays fully usable.
       ErrorReporter.report(e, stackTrace, reason: 'HomeSwipeScreen: fetchCandidatesPage failed');
-    }
-    if (loaded.isEmpty && !_hasMore) {
-      loaded = mockCandidates();
-      _usingMockFallback = true;
     }
     loaded = loaded.where((c) => !WishlistService.instance.hasBeenSwiped(c.id)).toList();
 
@@ -78,11 +76,11 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
   }
 
   Future<void> _maybeLoadMore() async {
-    if (_usingMockFallback || !_hasMore || _loadingMore || _candidates.length >= _lowWaterMark) return;
+    if (!_hasMore || _loadingMore || _candidates.length >= _lowWaterMark) return;
     _loadingMore = true;
     try {
-      final page = await CandidateService.instance.fetchCandidatesPage(startAfter: _lastDoc);
-      _lastDoc = page.lastDoc;
+      final page = await CandidateService.instance.fetchCandidatesPage(startAfter: _cursor, filters: _filters);
+      _cursor = page.nextCursor;
       _hasMore = page.hasMore;
       final fresh = page.candidates
           .where((c) => !WishlistService.instance.hasBeenSwiped(c.id) && !_candidates.any((existing) => existing.id == c.id))
@@ -96,47 +94,39 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
     }
   }
 
-  /// Right swipe just advances to the next candidate without saving
-  /// anything and shows no popup. Left swipe passes on the candidate
-  /// (persisted so they don't reappear) and shows an undo snackbar.
+  /// Left swipe (right-to-left) adds the candidate to the wishlist -- same
+  /// action as tapping the card's heart button ([_handleWishlistSelect]),
+  /// just reachable as a gesture too. Right swipe passes on the candidate
+  /// (persisted so they don't reappear). Both show an undo snackbar.
   void _handleSwipe(Candidate candidate, SwipeDirection direction) async {
     if (direction == SwipeDirection.left) {
-      await WishlistService.instance.reject(candidate);
-      if (!mounted) return;
-      setState(() => _candidates.removeWhere((c) => c.id == candidate.id));
-      _showUndoSnackBar('Passed on ${candidate.name}', candidate);
-      _maybeLoadMore();
+      _handleWishlistSelect(candidate);
       return;
     }
+    await WishlistService.instance.reject(candidate);
+    AnalyticsService.instance.logCandidateSwipe(action: 'pass');
     if (!mounted) return;
     setState(() => _candidates.removeWhere((c) => c.id == candidate.id));
+    _showUndoToast('Passed on ${candidate.name}', candidate);
     _maybeLoadMore();
   }
 
   void _handleWishlistSelect(Candidate candidate) async {
     await WishlistService.instance.shortlist(candidate);
+    AnalyticsService.instance.logCandidateSwipe(action: 'wishlist');
     if (!mounted) return;
     setState(() => _candidates.removeWhere((c) => c.id == candidate.id));
-    _showUndoSnackBar('Added ${candidate.name} to wishlist', candidate);
+    _showUndoToast('Added ${candidate.name} to wishlist', candidate);
     _maybeLoadMore();
   }
 
-  void _showUndoSnackBar(String message, Candidate candidate) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: AppColors.surfaceAlt,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'UNDO',
-            textColor: AppColors.accentAlt,
-            onPressed: () => _undo(candidate),
-          ),
-        ),
-      );
+  void _showUndoToast(String message, Candidate candidate) {
+    AppToast.action(
+      message,
+      actionLabel: 'UNDO',
+      onAction: () => _undo(candidate),
+      duration: const Duration(seconds: 4),
+    );
   }
 
   Future<void> _undo(Candidate candidate) async {
@@ -155,6 +145,30 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
 
   void _openVideoIntro(Candidate candidate) {
     pushSmooth(context, VideoIntroScreen(candidate: candidate));
+  }
+
+  Future<void> _openFilters() async {
+    final result = await showDeckFiltersSheet(context, current: _filters);
+    if (result == null || !mounted || result == _filters) return;
+    setState(() {
+      _filters = result;
+      _loading = true;
+      _cursor = null;
+      _hasMore = true;
+      _candidates = [];
+    });
+    await _loadFirstPage();
+  }
+
+  Future<void> _clearFilters() async {
+    setState(() {
+      _filters = const CandidateFilters();
+      _loading = true;
+      _cursor = null;
+      _hasMore = true;
+      _candidates = [];
+    });
+    await _loadFirstPage();
   }
 
   Future<void> _openSearch() async {
@@ -203,10 +217,10 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(gradient: AppColors.accentGradient, borderRadius: BorderRadius.circular(13)),
-            child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: Image.asset('assets/images/icon_mark.png', filterQuality: FilterQuality.high),
           ),
           const SizedBox(width: 10),
           const Expanded(
@@ -223,6 +237,14 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
             onTap: (_loading || _candidates.isEmpty) ? null : _openSearch,
           ),
           const SizedBox(width: 8),
+          Badge(
+            isLabelVisible: _filters.activeCount > 0,
+            label: Text('${_filters.activeCount}'),
+            backgroundColor: AppColors.accentAlt,
+            child: _HeaderIconButton(icon: Icons.tune_rounded, onTap: _openFilters),
+          ),
+          const SizedBox(width: 4),
+          const NotificationBell(),
           SizedBox(width: 38, height: 38, child: ClipOval(child: InitialsAvatar(name: displayName))),
         ],
       ),
@@ -274,23 +296,32 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
             children: [
               const Icon(Icons.inbox_rounded, size: 72, color: AppColors.textSecondary),
               const SizedBox(height: 16),
-              const Text(
-                'No more candidates right now',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              Text(
+                _filters.activeCount > 0 ? 'No candidates match these filters' : 'No more candidates right now',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Check your shortlist or come back later for new profiles.',
-                style: TextStyle(color: AppColors.textSecondary),
+              Text(
+                _filters.activeCount > 0
+                    ? 'Loosen a filter to see more people.'
+                    : 'Check your shortlist or come back later for new profiles.',
+                style: const TextStyle(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: widget.onViewWishlist,
-                icon: const Icon(Icons.favorite),
-                label: const Text('View wishlist'),
-              ),
+              if (_filters.activeCount > 0)
+                FilledButton.icon(
+                  onPressed: _clearFilters,
+                  icon: const Icon(Icons.filter_alt_off_rounded),
+                  label: const Text('Clear filters'),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: widget.onViewWishlist,
+                  icon: const Icon(Icons.favorite),
+                  label: const Text('View wishlist'),
+                ),
             ],
           ),
         ),

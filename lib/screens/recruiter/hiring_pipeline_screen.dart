@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/opportunity.dart';
 import '../../services/auth_service.dart';
-import '../../services/error_reporter.dart';
 import '../../services/opportunity_service.dart';
-import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
-import '../../widgets/candidate_card_face.dart';
 import '../../widgets/fade_in_up.dart';
-import '../../widgets/section_card.dart';
 import 'my_postings_tab.dart';
+import 'pipeline_widgets.dart';
+import '../../widgets/notification_bell.dart';
 
 /// The recruiter's hiring side: "Pipeline" (every candidate interaction --
 /// found by email search or from someone applying to a posting) and "My
@@ -26,6 +24,7 @@ class HiringPipelineScreen extends StatefulWidget {
 
 class _HiringPipelineScreenState extends State<HiringPipelineScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController = TabController(length: 2, vsync: this);
+  OpportunityStatus? _filter;
 
   @override
   void dispose() {
@@ -48,6 +47,7 @@ class _HiringPipelineScreenState extends State<HiringPipelineScreen> with Single
                     const Expanded(
                       child: Text('Hiring', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
                     ),
+                    const NotificationBell(),
                     if (_tabController.index == 0)
                       FilledButton.icon(
                         onPressed: () => _openSearch(context),
@@ -87,10 +87,10 @@ class _HiringPipelineScreenState extends State<HiringPipelineScreen> with Single
 
   Widget _buildPipelineTab() {
     return StreamBuilder<List<Opportunity>>(
-      stream: OpportunityService.instance.streamForRecruiter(AuthService.instance.currentUser!.uid),
+      stream: OpportunityService.instance.streamForRecruiter(AuthService.instance.currentUid),
       builder: (context, snapshot) {
-        final opportunities = snapshot.data ?? const [];
-        if (opportunities.isEmpty) {
+        final all = snapshot.data ?? const <Opportunity>[];
+        if (all.isEmpty) {
           return FadeInUp(
             child: const Center(
               child: Padding(
@@ -104,20 +104,66 @@ class _HiringPipelineScreenState extends State<HiringPipelineScreen> with Single
             ),
           );
         }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          itemCount: opportunities.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final opportunity = opportunities[index];
-            return FadeInUp(
-              delay: Duration(milliseconds: 40 * index),
-              child: _PipelineTile(
-                opportunity: opportunity,
-                onTap: () => _openEditor(context, existing: opportunity),
+        final filtered = _filter == null ? all : all.where((o) => o.status == _filter).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                children: [
+                  _FilterChip(label: 'All (${all.length})', selected: _filter == null, onTap: () => setState(() => _filter = null)),
+                  const SizedBox(width: 8),
+                  for (final status in OpportunityStatus.values) ...[
+                    _FilterChip(
+                      label: '${status.label} (${all.where((o) => o.status == status).length})',
+                      selected: _filter == status,
+                      onTap: () => setState(() => _filter = status),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: filtered.isEmpty
+                  ? FadeInUp(
+                      child: const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text('Nothing in this category yet.', style: TextStyle(color: AppColors.textSecondary)),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final opportunity = filtered[index];
+                        return FadeInUp(
+                          delay: Duration(milliseconds: 35 * index),
+                          child: PipelineTile(
+                            opportunity: opportunity,
+                            onTap: () => openOpportunityEditor(context, existing: opportunity),
+                            onMove: (status) => moveOpportunity(context, opportunity, status),
+                            onAssignTask: () => assignTaskTo(context, opportunity),
+                            onReviewTask: (task) => reviewTaskOf(context, opportunity, task: task),
+                            onScheduleInterview: () => openOpportunityEditor(
+                              context,
+                              existing: opportunity,
+                              initialStatus: OpportunityStatus.interviewScheduled,
+                            ),
+                            onOpenChat: () => openChatWith(context, opportunity),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         );
       },
     );
@@ -128,61 +174,44 @@ class _HiringPipelineScreenState extends State<HiringPipelineScreen> with Single
       MaterialPageRoute(builder: (_) => const _CandidateSearchScreen()),
     );
     if (candidate == null || !context.mounted) return;
-    _openEditor(context, candidate: candidate);
+
+    // This candidate may already have a pipeline entry with this
+    // recruiter -- e.g. they separately applied to a job posting, or
+    // were already shortlisted via the Wishlist. Open THAT one instead
+    // of starting a second, duplicate entry for the same candidate.
+    final existing = await OpportunityService.instance
+        .findExistingBetween(AuthService.instance.currentUid, candidate.uid);
+    if (!context.mounted) return;
+    if (existing != null) {
+      openOpportunityEditor(context, existing: existing);
+    } else {
+      openOpportunityEditor(context, candidate: candidate);
+    }
   }
 
-  void _openEditor(BuildContext context, {AppUser? candidate, Opportunity? existing}) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _OpportunityEditorScreen(candidate: candidate, existing: existing),
-      ),
-    );
-  }
 }
 
-class _PipelineTile extends StatelessWidget {
-  final Opportunity opportunity;
+/// Same filter-chip-row-plus-list pattern as
+/// [CandidateApplicationsScreen] (the candidate's "My Applications" tab)
+/// -- kept consistent across both sides of the app rather than
+/// introducing a different layout (e.g. a horizontally-scrolling Kanban
+/// board) just for this screen.
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
   final VoidCallback onTap;
-  const _PipelineTile({required this.opportunity, required this.onTap});
+  const _FilterChip({required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.border),
-            boxShadow: AppColors.cardShadow(),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: ClipOval(child: InitialsAvatar(name: opportunity.candidateName)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(opportunity.candidateName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                    const SizedBox(height: 2),
-                    Text(opportunity.role, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), overflow: TextOverflow.ellipsis),
-                  ],
-                ),
-              ),
-              StatusBadge(status: opportunity.status),
-            ],
-          ),
-        ),
-      ),
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: AppColors.accent.withValues(alpha: 0.35),
+      backgroundColor: AppColors.surface,
+      labelStyle: TextStyle(color: selected ? AppColors.textPrimary : AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 12.5),
+      side: const BorderSide(color: AppColors.border),
     );
   }
 }
@@ -277,286 +306,3 @@ class _CandidateSearchScreenState extends State<_CandidateSearchScreen> {
   }
 }
 
-/// Create (candidate != null) or edit (existing != null) an [Opportunity]:
-/// status, interview schedule, offer details.
-class _OpportunityEditorScreen extends StatefulWidget {
-  final AppUser? candidate;
-  final Opportunity? existing;
-  const _OpportunityEditorScreen({this.candidate, this.existing});
-
-  @override
-  State<_OpportunityEditorScreen> createState() => _OpportunityEditorScreenState();
-}
-
-class _OpportunityEditorScreenState extends State<_OpportunityEditorScreen> {
-  final _role = TextEditingController();
-  final _interviewDetails = TextEditingController();
-  final _interviewMode = TextEditingController();
-  final _offerSalary = TextEditingController();
-  final _offerNotes = TextEditingController();
-
-  OpportunityStatus _status = OpportunityStatus.shortlisted;
-  DateTime? _interviewDate;
-  DateTime? _offerJoiningDate;
-  bool _saving = false;
-
-  Opportunity? get _existing => widget.existing;
-
-  @override
-  void initState() {
-    super.initState();
-    final existing = _existing;
-    if (existing != null) {
-      _role.text = existing.role;
-      _status = existing.status;
-      _interviewDate = existing.interviewDate;
-      _interviewMode.text = existing.interviewMode;
-      _interviewDetails.text = existing.interviewDetails;
-      _offerSalary.text = existing.offerSalaryLpa?.toString() ?? '';
-      _offerJoiningDate = existing.offerJoiningDate;
-      _offerNotes.text = existing.offerNotes;
-    }
-  }
-
-  @override
-  void dispose() {
-    _role.dispose();
-    _interviewDetails.dispose();
-    _interviewMode.dispose();
-    _offerSalary.dispose();
-    _offerNotes.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickInterviewDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _interviewDate ?? DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_interviewDate ?? DateTime.now()),
-    );
-    if (time == null) return;
-    setState(() => _interviewDate = DateTime(date.year, date.month, date.day, time.hour, time.minute));
-  }
-
-  Future<void> _pickJoiningDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _offerJoiningDate ?? DateTime.now().add(const Duration(days: 14)),
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (date == null) return;
-    setState(() => _offerJoiningDate = date);
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    final recruiter = RecruiterProfileService.instance;
-    final existing = _existing;
-    final candidate = widget.candidate;
-
-    final opportunity = Opportunity(
-      id: existing?.id ?? '',
-      candidateUid: existing?.candidateUid ?? candidate!.uid,
-      candidateName: existing?.candidateName ?? candidate!.name,
-      recruiterUid: AuthService.instance.currentUser!.uid,
-      companyName: recruiter.company.isEmpty ? 'Hiring company' : recruiter.company,
-      recruiterName: recruiter.name,
-      role: _role.text.trim(),
-      status: _status,
-      interviewDate: _status == OpportunityStatus.interviewScheduled ? _interviewDate : null,
-      interviewMode: _status == OpportunityStatus.interviewScheduled ? _interviewMode.text.trim() : '',
-      interviewDetails: _status == OpportunityStatus.interviewScheduled ? _interviewDetails.text.trim() : '',
-      offerSalaryLpa: (_status == OpportunityStatus.offered || _status == OpportunityStatus.hired)
-          ? double.tryParse(_offerSalary.text.trim())
-          : null,
-      offerJoiningDate: (_status == OpportunityStatus.offered || _status == OpportunityStatus.hired) ? _offerJoiningDate : null,
-      offerNotes: (_status == OpportunityStatus.offered || _status == OpportunityStatus.hired) ? _offerNotes.text.trim() : '',
-    );
-
-    try {
-      await OpportunityService.instance.save(opportunity);
-      if (!mounted) return;
-      Navigator.of(context).pop();
-    } catch (e, stackTrace) {
-      ErrorReporter.report(e, stackTrace, reason: 'HiringPipelineScreen: save opportunity failed');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save. Please try again.'), backgroundColor: AppColors.reject),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final name = _existing?.candidateName ?? widget.candidate?.name ?? '';
-    return Scaffold(
-      body: AnimatedBackdrop(
-        child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 8, 20, 0),
-                child: Row(
-                  children: [
-                    IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
-                    Expanded(
-                      child: Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      FadeInUp(
-                        child: TextField(
-                          controller: _role,
-                          style: const TextStyle(color: AppColors.textPrimary),
-                          decoration: _decoration('Role', Icons.work_outline_rounded),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      FadeInUp(delay: const Duration(milliseconds: 40), child: _buildStatusPicker()),
-                      const SizedBox(height: 18),
-                      if (_status == OpportunityStatus.interviewScheduled)
-                        FadeInUp(delay: const Duration(milliseconds: 80), child: _buildInterviewFields()),
-                      if (_status == OpportunityStatus.offered || _status == OpportunityStatus.hired)
-                        FadeInUp(delay: const Duration(milliseconds: 80), child: _buildOfferFields()),
-                      const SizedBox(height: 26),
-                      FadeInUp(
-                        delay: const Duration(milliseconds: 160),
-                        child: FilledButton(
-                          onPressed: _saving ? null : _save,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(52),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: _saving
-                              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                              : const Text('Save'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusPicker() {
-    return SectionCard(
-      title: 'Status',
-      icon: Icons.flag_outlined,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: OpportunityStatus.values.where((s) => s != OpportunityStatus.applied).map((status) {
-          final selected = status == _status;
-          return ChoiceChip(
-            label: Text(status.label),
-            selected: selected,
-            onSelected: (_) => setState(() => _status = status),
-            selectedColor: AppColors.accent.withValues(alpha: 0.35),
-            backgroundColor: AppColors.surfaceAlt,
-            labelStyle: TextStyle(color: selected ? AppColors.textPrimary : AppColors.textSecondary, fontWeight: FontWeight.w600),
-            side: const BorderSide(color: AppColors.border),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildInterviewFields() {
-    return SectionCard(
-      title: 'Interview schedule',
-      icon: Icons.event_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          OutlinedButton.icon(
-            onPressed: _pickInterviewDateTime,
-            icon: const Icon(Icons.calendar_today_outlined, size: 16),
-            label: Text(_interviewDate == null ? 'Pick date & time' : _formatDateTime(_interviewDate!)),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _interviewMode,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: _decoration('Mode (e.g. Online / In-person)', Icons.videocam_outlined),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _interviewDetails,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: _decoration('Link or address', Icons.link_rounded),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOfferFields() {
-    return SectionCard(
-      title: 'Offer details',
-      icon: Icons.card_giftcard_rounded,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _offerSalary,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: _decoration('Offered CTC (LPA)', Icons.payments_outlined),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _pickJoiningDate,
-            icon: const Icon(Icons.event_available_outlined, size: 16),
-            label: Text(_offerJoiningDate == null ? 'Pick joining date' : '${_offerJoiningDate!.day}/${_offerJoiningDate!.month}/${_offerJoiningDate!.year}'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _offerNotes,
-            maxLines: 2,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: _decoration('Notes', Icons.notes_rounded),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDateTime(DateTime d) {
-    final hour = d.hour % 12 == 0 ? 12 : d.hour % 12;
-    final minute = d.minute.toString().padLeft(2, '0');
-    final period = d.hour >= 12 ? 'PM' : 'AM';
-    return '${d.day}/${d.month}/${d.year}, $hour:$minute $period';
-  }
-
-  InputDecoration _decoration(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon, color: AppColors.accentAlt, size: 20),
-      filled: true,
-      fillColor: AppColors.surface,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-    );
-  }
-}

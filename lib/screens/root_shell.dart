@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import '../models/candidate.dart';
 import '../services/wishlist_service.dart';
 import '../theme/app_theme.dart';
 import 'home_swipe_screen.dart';
@@ -8,6 +8,7 @@ import 'profile_screen.dart';
 import 'recruiter/hiring_pipeline_screen.dart';
 import 'shortlist_screen.dart';
 import 'wishlist_screen.dart';
+import '../widgets/notification_bell.dart';
 
 /// Bottom-nav shell with five tabs: Discover (the full-screen swipe deck),
 /// Wishlist, Shortlist, Pipeline (real candidates: interviews/offers) and
@@ -76,8 +77,8 @@ class _RootShellState extends State<RootShell> {
               label: 'Shortlist',
             ),
             const NavigationDestination(
-              icon: Icon(Icons.business_center_outlined),
-              selectedIcon: Icon(Icons.business_center_rounded),
+              icon: UnreadChatIcon(icon: Icons.business_center_outlined),
+              selectedIcon: UnreadChatIcon(icon: Icons.business_center_rounded),
               label: 'Pipeline',
             ),
             const NavigationDestination(
@@ -93,7 +94,7 @@ class _RootShellState extends State<RootShell> {
 }
 
 class _CountBadge extends StatelessWidget {
-  final ValueListenable<Box<Map>> listenable;
+  final ValueListenable<List<Candidate>> listenable;
   final IconData icon;
   final int Function() count;
 

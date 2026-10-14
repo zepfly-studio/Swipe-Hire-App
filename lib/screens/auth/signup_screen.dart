@@ -1,14 +1,21 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
+import '../../services/analytics_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/error_reporter.dart';
 import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
+import '../legal/privacy_policy_screen.dart';
+import '../legal/terms_of_service_screen.dart';
 import 'auth_error.dart';
 import 'auth_text_field.dart';
+import 'google_sign_in_button.dart';
+import 'otp_verify_screen.dart';
+import '../../widgets/app_toast.dart';
 
 /// Account creation. The first thing a new user picks is their role --
 /// [UserRole.candidate] (looking for a job) or [UserRole.recruiter] (a
@@ -32,6 +39,7 @@ class _SignupScreenState extends State<SignupScreen> {
   UserRole _role = UserRole.recruiter;
   bool _loading = false;
   bool _obscure = true;
+  bool _agreedToTerms = false;
 
   @override
   void dispose() {
@@ -45,8 +53,23 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_agreedToTerms) {
+      _showMessage('Please agree to the Terms & Privacy Policy to continue.', isError: true);
+      return;
+    }
     setState(() => _loading = true);
     try {
+      // Email OTP gate -- both roles go through the same step, since it
+      // only verifies the email address, not anything role-specific.
+      final devOtp = await AuthService.instance.sendSignupOtp(_email.text);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      final verified = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => OtpVerifyScreen(email: _email.text.trim(), devOtp: devOtp)),
+      );
+      if (verified != true || !mounted) return;
+      setState(() => _loading = true);
+
       await AuthService.instance.signUp(
         name: _name.text,
         email: _email.text,
@@ -54,6 +77,8 @@ class _SignupScreenState extends State<SignupScreen> {
         role: _role,
         company: _role == UserRole.recruiter ? _company.text : '',
       );
+      AnalyticsService.instance.logSignUp(role: _role.value);
+      AnalyticsService.instance.setUserRole(_role.value);
       if (_role == UserRole.recruiter) {
         // Pre-fill the recruiter's editable profile tab so it isn't blank
         // the first time they open it.
@@ -86,13 +111,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   void _showMessage(String message, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? AppColors.reject : AppColors.surfaceAlt,
-        behavior: SnackBarBehavior.floating,
-      ));
+    AppToast.message(message, isError: isError);
   }
 
   @override
@@ -180,7 +199,7 @@ class _SignupScreenState extends State<SignupScreen> {
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) return 'Required';
-                              return value.length < 6 ? 'At least 6 characters' : null;
+                              return value.length < 8 ? 'At least 8 characters' : null;
                             },
                           ),
                         ),
@@ -200,7 +219,12 @@ class _SignupScreenState extends State<SignupScreen> {
                             },
                           ),
                         ),
-                        const SizedBox(height: 26),
+                        const SizedBox(height: 18),
+                        FadeInUp(
+                          delay: const Duration(milliseconds: 150),
+                          child: _buildTermsCheckbox(),
+                        ),
+                        const SizedBox(height: 18),
                         FadeInUp(
                           delay: const Duration(milliseconds: 160),
                           child: FilledButton(
@@ -217,6 +241,19 @@ class _SignupScreenState extends State<SignupScreen> {
                                 : const Text('Create account'),
                           ),
                         ),
+                        const SizedBox(height: 18),
+                        FadeInUp(
+                          delay: const Duration(milliseconds: 180),
+                          child: GoogleSignInButton(
+                            role: _role,
+                            enabled: !_loading,
+                            // Signup was pushed on top of AuthGate; close it so
+                            // the screen AuthGate shows for the user is visible.
+                            onSignedIn: () {
+                              if (mounted) Navigator.of(context).pop();
+                            },
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -226,6 +263,53 @@ class _SignupScreenState extends State<SignupScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTermsCheckbox() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: _agreedToTerms,
+            onChanged: (value) => setState(() => _agreedToTerms = value ?? false),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() => _agreedToTerms = !_agreedToTerms),
+            child: RichText(
+              key: const Key('signup_terms_richtext'),
+              text: TextSpan(
+                style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary, height: 1.4),
+                children: [
+                  const TextSpan(text: 'I agree to the '),
+                  TextSpan(
+                    text: 'Terms of Service',
+                    style: const TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w700),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () => Navigator.of(context)
+                          .push(MaterialPageRoute(builder: (_) => const TermsOfServiceScreen())),
+                  ),
+                  const TextSpan(text: ' and '),
+                  TextSpan(
+                    text: 'Privacy Policy',
+                    style: const TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w700),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () => Navigator.of(context)
+                          .push(MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

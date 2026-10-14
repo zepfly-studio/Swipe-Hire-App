@@ -8,6 +8,7 @@ import '../../services/data_export_service.dart';
 import '../../services/error_reporter.dart';
 import '../../theme/app_theme.dart';
 import 'login_screen.dart';
+import '../../widgets/app_toast.dart';
 
 /// "Export my data": builds the account's full JSON export and shows it in
 /// a dialog with a one-tap copy -- the simplest data-portability option
@@ -33,9 +34,7 @@ Future<void> showExportDataDialog(BuildContext context) async {
     ErrorReporter.report(e, stackTrace, reason: 'exportMyData failed');
     if (!context.mounted) return;
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not prepare your data export. Please try again.'), backgroundColor: AppColors.reject),
-    );
+    AppToast.error('Could not prepare your data export. Please try again.');
   }
 }
 
@@ -78,9 +77,7 @@ class _ExportResultDialog extends StatelessWidget {
         FilledButton.icon(
           onPressed: () {
             Clipboard.setData(ClipboardData(text: json));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Copied to clipboard'), backgroundColor: AppColors.surfaceAlt),
-            );
+            AppToast.success('Copied to clipboard');
           },
           icon: const Icon(Icons.copy_rounded, size: 16),
           label: const Text('Copy'),
@@ -90,7 +87,8 @@ class _ExportResultDialog extends StatelessWidget {
   }
 }
 
-/// "Delete account": confirms, deletes every Firestore doc + the Firebase
+/// "Delete account": confirms, deletes the backend account (cascading to
+/// everything it owns in Postgres) + the Firebase
 /// Auth account itself. Transparently handles the `requires-recent-login`
 /// case Firebase Auth throws on an old session by prompting for the
 /// password and retrying once.
@@ -148,9 +146,7 @@ Future<void> confirmAndDeleteAccount(BuildContext context) async {
 }
 
 void _showDeleteError(BuildContext context) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text('Could not delete your account. Please try again.'), backgroundColor: AppColors.reject),
-  );
+  AppToast.error('Could not delete your account. Please try again.');
 }
 
 Future<String?> _promptPassword(BuildContext context) async {

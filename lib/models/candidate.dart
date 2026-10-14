@@ -16,6 +16,12 @@ class Candidate {
   final String about;
   final String noticePeriod;
 
+  /// How well this candidate fits the recruiter's open postings (0-100) and
+  /// which posting fits best. Null when the recruiter has none open.
+  final int? matchScore;
+  final String matchJobTitle;
+  final List<String> matchReasons;
+
   Candidate({
     required this.id,
     required this.name,
@@ -33,6 +39,9 @@ class Candidate {
     required this.introVideoUrl,
     required this.about,
     required this.noticePeriod,
+    this.matchScore,
+    this.matchJobTitle = '',
+    this.matchReasons = const [],
   });
 
   factory Candidate.fromMap(String id, Map<String, dynamic> map) {
@@ -53,6 +62,9 @@ class Candidate {
       introVideoUrl: map['introVideoUrl'] ?? '',
       about: map['about'] ?? '',
       noticePeriod: map['noticePeriod'] ?? '-',
+      matchScore: (map['matchScore'] as num?)?.toInt(),
+      matchJobTitle: map['matchJobTitle'] ?? '',
+      matchReasons: List<String>.from(map['matchReasons'] ?? const []),
     );
   }
 

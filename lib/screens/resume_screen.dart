@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/candidate_card_face.dart';
 import '../widgets/fade_in_up.dart';
+import '../widgets/app_toast.dart';
 
 class ResumeScreen extends StatelessWidget {
   final Candidate candidate;
@@ -77,9 +78,7 @@ class _PdfBody extends StatelessWidget {
     final uri = Uri.parse(candidate.resumeUrl);
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the resume link')),
-      );
+      AppToast.error('Could not open the resume link');
     }
   }
 

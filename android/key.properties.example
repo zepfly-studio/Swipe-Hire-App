@@ -1,0 +1,7 @@
+# Copy this file to android/key.properties (NOT committed to git) and fill
+# in your own values after generating a release keystore. See
+# docs/android-release-signing.md for the full step-by-step.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=swipehire
+storeFile=release-keystore.jks

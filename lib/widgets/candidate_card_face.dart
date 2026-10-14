@@ -24,10 +24,15 @@ class CandidateCardFace extends StatelessWidget {
     this.onViewResume,
   });
 
-  /// A stable, deterministic "match score" for visual flavour -- this app
-  /// has no real matching algorithm (no job filters to score against), so
-  /// this is cosmetic rather than a genuine recommendation signal.
-  int get _matchPercent => 75 + (candidate.id.hashCode.abs() % 24);
+  /// "Available now" / "Notice: 30 days" from what the candidate actually
+  /// entered, or nothing when they left it blank.
+  String? get _availability {
+    final notice = candidate.noticePeriod.trim();
+    if (notice.isEmpty || notice == '-') return null;
+    final lower = notice.toLowerCase();
+    if (lower.contains('immediate') || lower == '0' || lower.contains('no notice')) return 'Available now';
+    return 'Notice: $notice';
+  }
 
   String get _firstName {
     final parts = candidate.name.trim().split(RegExp(r'\s+'));
@@ -76,8 +81,9 @@ class CandidateCardFace extends StatelessWidget {
             ),
           ),
         ),
-        Positioned(top: 14, left: 14, child: _StatusPill()),
-        Positioned(top: 14, right: 14, child: _MatchBadge(percent: _matchPercent)),
+        if (_availability != null) Positioned(top: 14, left: 14, child: _StatusPill(label: _availability!)),
+        if (candidate.matchScore != null)
+          Positioned(top: 14, right: 14, child: _MatchBadge(percent: candidate.matchScore!)),
         Positioned.fill(
           child: Align(
             alignment: const Alignment(0.35, -0.15),
@@ -110,12 +116,12 @@ class CandidateCardFace extends StatelessWidget {
   Widget _buildInfoSection(BuildContext context) {
     final hasCurrentSalary = candidate.currentSalaryLpa > 0;
     final stats = <_StatEntry>[
-      _StatEntry(Icons.work_history_rounded, 'Experience', candidate.experience, const Color(0xFF6C4CF1)),
-      _StatEntry(Icons.apartment_rounded, 'Current Company', candidate.currentCompany, const Color(0xFF2563EB)),
-      _StatEntry(Icons.payments_rounded, hasCurrentSalary ? 'Expected CTC' : 'Expected CTC', '₹${candidate.expectedSalaryLpa.toStringAsFixed(1)} LPA', const Color(0xFF16A34A)),
-      _StatEntry(Icons.event_available_rounded, 'Notice Period', candidate.noticePeriod, const Color(0xFFDB2777)),
-      _StatEntry(Icons.location_on_rounded, 'Location', candidate.location, const Color(0xFF0EA5A3)),
-      _StatEntry(Icons.school_rounded, 'Qualification', candidate.qualification, const Color(0xFF6C4CF1)),
+      _StatEntry(Icons.work_history_rounded, 'Experience', candidate.experience, AppColors.accent),
+      _StatEntry(Icons.apartment_rounded, 'Current Company', candidate.currentCompany, AppColors.info),
+      _StatEntry(Icons.payments_rounded, hasCurrentSalary ? 'Expected CTC' : 'Expected CTC', '₹${candidate.expectedSalaryLpa.toStringAsFixed(1)} LPA', AppColors.like),
+      _StatEntry(Icons.event_available_rounded, 'Notice Period', candidate.noticePeriod, AppColors.accentAlt),
+      _StatEntry(Icons.location_on_rounded, 'Location', candidate.location, AppColors.info),
+      _StatEntry(Icons.school_rounded, 'Qualification', candidate.qualification, AppColors.accent),
     ];
 
     return Padding(
@@ -157,7 +163,11 @@ class CandidateCardFace extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 const spacing = 10.0;
-                final chipWidth = (constraints.maxWidth - spacing) / 2;
+                // Two chips per row when there's room; one full-width chip
+                // per row on a very narrow card (a tiny browser window).
+                // Never negative: SizedBox asserts on a negative width.
+                final available = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
+                final chipWidth = available >= 240 ? (available - spacing) / 2 : available;
                 return Wrap(
                   spacing: spacing,
                   runSpacing: spacing,
@@ -190,11 +200,13 @@ class CandidateCardFace extends StatelessWidget {
             Row(
               children: [
                 if (onViewResume != null)
-                  TextButton.icon(
-                    onPressed: onViewResume,
-                    icon: const Icon(Icons.description_outlined, size: 15),
-                    label: const Text('Resume', style: TextStyle(fontSize: 12)),
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                  Flexible(
+                    child: TextButton.icon(
+                      onPressed: onViewResume,
+                      icon: const Icon(Icons.description_outlined, size: 15),
+                      label: const Text('Resume', style: TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                    ),
                   ),
                 const Spacer(),
                 if (onWishlistTap != null) _WishlistButton(onTap: onWishlistTap!),
@@ -239,11 +251,11 @@ class InitialsAvatar extends StatelessWidget {
   const InitialsAvatar({super.key, required this.name});
 
   static const List<List<Color>> _palettes = [
-    [Color(0xFF6C4CF1), Color(0xFF0EA5A3)],
+    [AppColors.accent, AppColors.accentAlt],
     [Color(0xFFFF6B9D), Color(0xFFFFA36B)],
-    [Color(0xFF22C55E), Color(0xFF16A34A)],
-    [Color(0xFF60A5FA), Color(0xFF6C4CF1)],
-    [Color(0xFFFFA36B), Color(0xFFFB7185)],
+    [Color(0xFF10B981), AppColors.like],
+    [AppColors.info, AppColors.accent],
+    [Color(0xFFFFA36B), AppColors.accentAlt],
   ];
 
   String get _initials {
@@ -265,19 +277,31 @@ class InitialsAvatar extends StatelessWidget {
         ),
       ),
       alignment: Alignment.center,
-      child: Text(
-        _initials,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 48,
-          fontWeight: FontWeight.w800,
-        ),
+      // Scaled to whatever box this is dropped into (a 38px header avatar
+      // and a 92px profile avatar share this widget) instead of a fixed
+      // size meant only for the larger one, which overflowed badly when
+      // reused small.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = constraints.biggest.shortestSide;
+          return Text(
+            _initials,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: size * 0.42,
+              fontWeight: FontWeight.w800,
+            ),
+          );
+        },
       ),
     );
   }
 }
 
 class _StatusPill extends StatelessWidget {
+  final String label;
+  const _StatusPill({required this.label});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -291,7 +315,7 @@ class _StatusPill extends StatelessWidget {
         children: [
           Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.like, shape: BoxShape.circle)),
           const SizedBox(width: 6),
-          const Text('Actively Looking', style: TextStyle(color: AppColors.textPrimary, fontSize: 11.5, fontWeight: FontWeight.w700)),
+          Text(label, style: const TextStyle(color: AppColors.textPrimary, fontSize: 11.5, fontWeight: FontWeight.w700)),
         ],
       ),
     );

@@ -10,9 +10,11 @@ import '../widgets/page_transitions.dart';
 import 'resume_screen.dart';
 import 'video_intro_screen.dart';
 
-/// Wishlist tab: candidates saved via the card's Wishlist button. From here
-/// the recruiter promotes a candidate to the final [ShortlistScreen], or
-/// swipes the tile away to drop them back into the swipe deck.
+/// Wishlist tab: candidates saved via the card's Wishlist button (or a
+/// left swipe). From here the recruiter promotes a candidate to the
+/// final [ShortlistScreen] -- still a local, no-backend stage -- which is
+/// where the actual push into the real Hiring > Pipeline happens.
+/// Swiping a tile away instead drops them back into the swipe deck.
 class WishlistScreen extends StatelessWidget {
   const WishlistScreen({super.key});
 
@@ -42,7 +44,7 @@ class WishlistScreen extends StatelessWidget {
                           child: Padding(
                             padding: EdgeInsets.all(32),
                             child: Text(
-                              'No candidates in your wishlist yet.\nTap the Wishlist button on a profile to add them here.',
+                              'No candidates in your wishlist yet.\nSwipe left on a profile (or tap its heart button) to add them here.',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: AppColors.textSecondary),
                             ),

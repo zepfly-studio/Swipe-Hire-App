@@ -1,94 +1,146 @@
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../models/candidate.dart';
+import 'api_client.dart';
+import 'error_reporter.dart';
 
-/// Local persistence for the recruiter's two-stage funnel, using Hive so it
-/// survives app restarts without needing a backend:
+/// The recruiter's two-stage funnel, stored on the backend (`swipes` table,
+/// `/swipes` routes) so it is the same on every device and survives a
+/// reinstall:
 ///   1. Wishlist -- candidates saved via the card's Wishlist button.
 ///   2. Shortlist -- candidates promoted from the wishlist for final hire
 ///      consideration (via [moveToShortlist]).
-/// Left-swipe rejections are tracked separately so they don't reappear in
-/// the swipe deck.
+/// Right-swipe rejections are tracked too so they don't reappear in the
+/// swipe deck. Everything is cached in memory after [loadForUser] so the
+/// screens stay synchronous; every mutation updates the cache first and
+/// then the backend.
 class WishlistService {
-  WishlistService._internal();
+  WishlistService._internal({ApiClient? api}) : _api = api ?? ApiClient.instance;
   static final WishlistService instance = WishlistService._internal();
 
-  static const String _wishlistBox = 'shortlisted_candidates';
-  static const String _shortlistBox = 'final_shortlist_candidates';
-  static const String _rejectedBox = 'rejected_candidates';
-  static const String _seenBox = 'seen_candidate_ids';
+  final ApiClient _api;
 
-  late Box<Map> _wishlist;
-  late Box<Map> _shortlist;
-  late Box<Map> _rejected;
-  late Box<bool> _seen;
+  final ValueNotifier<List<Candidate>> _wishlist = ValueNotifier(const []);
+  final ValueNotifier<List<Candidate>> _shortlist = ValueNotifier(const []);
+  final Set<String> _rejectedIds = {};
 
-  Future<void> init() async {
-    await Hive.initFlutter();
-    _wishlist = await Hive.openBox<Map>(_wishlistBox);
-    _shortlist = await Hive.openBox<Map>(_shortlistBox);
-    _rejected = await Hive.openBox<Map>(_rejectedBox);
-    _seen = await Hive.openBox<bool>(_seenBox);
+  String? _loadedForUid;
+  Future<void>? _loading;
+
+  /// Called by [AuthGate] when a recruiter signs in. Idempotent per uid.
+  Future<void> loadForUser(String uid) {
+    if (_loadedForUid == uid && _loading != null) return _loading!;
+    _loadedForUid = uid;
+    return _loading = _refresh();
   }
 
-  bool hasBeenSwiped(String candidateId) => _seen.containsKey(candidateId);
+  /// Waits for the sign-in load (if one is in flight) -- the swipe deck
+  /// awaits this before filtering out already-swiped candidates.
+  Future<void> ensureLoaded() => _loading ?? Future.value();
+
+  Future<void> _refresh() async {
+    try {
+      final res = await _api.get('/swipes');
+      List<Candidate> parse(String key) => (res[key] as List? ?? const [])
+          .map((e) => Candidate.fromMap(e['id'] as String, Map<String, dynamic>.from(e as Map)))
+          .toList();
+      _wishlist.value = parse('wishlist');
+      _shortlist.value = parse('shortlist');
+      _rejectedIds
+        ..clear()
+        ..addAll((res['rejectedIds'] as List? ?? const []).map((e) => e.toString()));
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'WishlistService: load failed');
+    }
+  }
+
+  /// Forgets the cached funnel on sign-out so the next account starts clean.
+  void clear() {
+    _loadedForUid = null;
+    _loading = null;
+    _wishlist.value = const [];
+    _shortlist.value = const [];
+    _rejectedIds.clear();
+  }
+
+  bool hasBeenSwiped(String candidateId) =>
+      _rejectedIds.contains(candidateId) || _has(_wishlist, candidateId) || _has(_shortlist, candidateId);
+
+  bool _has(ValueNotifier<List<Candidate>> list, String id) => list.value.any((c) => c.id == id);
+
+  void _remove(ValueNotifier<List<Candidate>> list, String id) {
+    if (_has(list, id)) list.value = list.value.where((c) => c.id != id).toList();
+  }
+
+  void _add(ValueNotifier<List<Candidate>> list, Candidate candidate) {
+    _remove(list, candidate.id);
+    list.value = [candidate, ...list.value];
+  }
+
+  Future<void> _put(String candidateId, String state) async {
+    try {
+      await _api.put('/swipes/$candidateId', body: {'state': state});
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'WishlistService: save swipe failed');
+    }
+  }
 
   /// Card's Wishlist button: save a candidate for later review.
   Future<void> shortlist(Candidate candidate) async {
-    await _rejected.delete(candidate.id);
-    await _wishlist.put(candidate.id, candidate.toMap());
-    await _seen.put(candidate.id, true);
+    _rejectedIds.remove(candidate.id);
+    _remove(_shortlist, candidate.id);
+    _add(_wishlist, candidate);
+    await _put(candidate.id, 'wishlist');
   }
 
   Future<void> reject(Candidate candidate) async {
-    await _wishlist.delete(candidate.id);
-    await _shortlist.delete(candidate.id);
-    await _rejected.put(candidate.id, candidate.toMap());
-    await _seen.put(candidate.id, true);
+    _remove(_wishlist, candidate.id);
+    _remove(_shortlist, candidate.id);
+    _rejectedIds.add(candidate.id);
+    await _put(candidate.id, 'rejected');
   }
 
   /// Promotes a wishlisted candidate to the final shortlist.
   Future<void> moveToShortlist(Candidate candidate) async {
-    await _wishlist.delete(candidate.id);
-    await _shortlist.put(candidate.id, candidate.toMap());
+    _remove(_wishlist, candidate.id);
+    _add(_shortlist, candidate);
+    await _put(candidate.id, 'shortlist');
   }
 
   /// Sends a shortlisted candidate back to the wishlist for reconsideration.
   Future<void> demoteToWishlist(Candidate candidate) async {
-    await _shortlist.delete(candidate.id);
-    await _wishlist.put(candidate.id, candidate.toMap());
+    _remove(_shortlist, candidate.id);
+    _add(_wishlist, candidate);
+    await _put(candidate.id, 'wishlist');
   }
 
   /// Fully removes a candidate from the shortlist (they stay marked as seen
   /// so they won't reappear in the swipe deck).
   Future<void> removeFromShortlist(String candidateId) async {
-    await _shortlist.delete(candidateId);
+    _remove(_shortlist, candidateId);
+    _rejectedIds.add(candidateId);
+    await _put(candidateId, 'rejected');
   }
 
   /// Reverses a wishlist/reject decision entirely -- the candidate becomes
   /// unseen again and can reappear in the swipe deck.
   Future<void> undoLast(String candidateId) async {
-    await _wishlist.delete(candidateId);
-    await _shortlist.delete(candidateId);
-    await _rejected.delete(candidateId);
-    await _seen.delete(candidateId);
+    _remove(_wishlist, candidateId);
+    _remove(_shortlist, candidateId);
+    _rejectedIds.remove(candidateId);
+    try {
+      await _api.delete('/swipes/$candidateId');
+    } catch (e, stackTrace) {
+      ErrorReporter.report(e, stackTrace, reason: 'WishlistService: undo failed');
+    }
   }
 
-  List<Candidate> getShortlisted() => _readAll(_wishlist);
+  List<Candidate> getShortlisted() => _wishlist.value;
 
-  List<Candidate> getFinalShortlist() => _readAll(_shortlist);
+  List<Candidate> getFinalShortlist() => _shortlist.value;
 
-  List<Candidate> _readAll(Box<Map> box) {
-    return box.keys.map((key) {
-      final map = Map<String, dynamic>.from(box.get(key) as Map);
-      return Candidate.fromMap(key as String, map);
-    }).toList();
-  }
+  ValueListenable<List<Candidate>> listenableShortlist() => _wishlist;
+  ValueListenable<List<Candidate>> listenableFinalShortlist() => _shortlist;
 
-  ValueListenable<Box<Map>> listenableShortlist() => _wishlist.listenable();
-  ValueListenable<Box<Map>> listenableFinalShortlist() => _shortlist.listenable();
-
-  int get shortlistCount => _wishlist.length;
-  int get finalShortlistCount => _shortlist.length;
-  int get rejectedCount => _rejected.length;
+  int get shortlistCount => _wishlist.value.length;
+  int get finalShortlistCount => _shortlist.value.length;
 }
