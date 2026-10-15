@@ -1,6 +1,8 @@
 class Candidate {
   final String id;
   final String name;
+  /// Not sent by the server on candidate cards any more; always 0 there and
+  /// never shown to companies.
   final int age;
   final String qualification;
   final String experience;
@@ -25,7 +27,7 @@ class Candidate {
   Candidate({
     required this.id,
     required this.name,
-    required this.age,
+    this.age = 0,
     required this.qualification,
     required this.experience,
     required this.role,
@@ -48,7 +50,7 @@ class Candidate {
     return Candidate(
       id: id,
       name: map['name'] ?? 'Unknown',
-      age: (map['age'] ?? 0) as int,
+      age: (map['age'] as num?)?.toInt() ?? 0, // the server no longer sends it on cards
       qualification: map['qualification'] ?? '-',
       experience: map['experience'] ?? '-',
       role: map['role'] ?? '-',

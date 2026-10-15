@@ -112,6 +112,28 @@ model CandidateProfile {
   experienceYears   Float    @default(0)
   /// `noticePeriod` ("30 days", "2 months", "Immediate") in days.
   noticeDays        Int      @default(0)
+
+  // Phase 1 (candidate side). `desiredRole` doubles as the headline /
+  // "role looking for"; `experience` stays free text with `experienceYears`
+  // derived from it.
+  phone                String   @default("")
+  /// Never shown on a recruiter-facing card.
+  gender               String   @default("")
+  degree               String   @default("")
+  college              String   @default("")
+  graduationYear       Int?
+  currentPost          String   @default("")
+  expectedSalaryMaxLpa Float?
+  salaryNegotiable     Boolean  @default(false)
+  workModes            String[] @default([])
+  jobTypes             String[] @default([])
+  preferredLocations   String[] @default([])
+  /// false hides the candidate from every recruiter deck.
+  openToWork           Boolean  @default(true)
+  /// The "I'm still looking" ring: refreshed by POST /candidates/me/active.
+  /// A profile not refreshed for 15 days sinks to the bottom of the deck.
+  activeAt             DateTime @default(now())
+
   updatedAt         DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -1,26 +1,36 @@
 {
   "project_info": {
-    "project_number": "625477683819",
-    "project_id": "swipehire-app-cj",
-    "storage_bucket": "swipehire-app-cj.firebasestorage.app"
+    "project_number": "385632416704",
+    "project_id": "swipehire-app-zepfly",
+    "storage_bucket": "swipehire-app-zepfly.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:625477683819:android:21492559e3b9bb55043f2e",
+        "mobilesdk_app_id": "1:385632416704:android:4650b7fd3c40559ef18e25",
         "android_client_info": {
           "package_name": "com.hiringapp.hiring_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "385632416704-s86ti5cc0rv2qfaort3f2fr5ht3ani6c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyCf2RiZ-ddwI_7oi5avLjZCFB4vE-9jbrU"
+          "current_key": "AIzaSyCVK1lAdnMHKx1QUk19_1nZRN2rRI96U3o"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "385632416704-s86ti5cc0rv2qfaort3f2fr5ht3ani6c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

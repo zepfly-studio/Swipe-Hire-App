@@ -24,7 +24,7 @@ OTP emails go out through [Resend](https://resend.com).
    accounts > Generate new private key) and save it as
    `backend/firebase-service-account.json` (git-ignored).
 3. `npm install`
-4. `npx prisma migrate dev` (creates every table)
+4. `npx prisma migrate dev` (creates every table; production uses `npx prisma migrate deploy`)
 5. `npm run dev`
 
 Server runs on `http://localhost:4000`. The Android emulator reaches it via
@@ -71,13 +71,39 @@ Dates are ISO-8601 strings. Lists come back wrapped in an object.
 ### Candidates
 
 - `GET /candidates?cursor=&limit=` (recruiter) -> `{ candidates, nextCursor, hasMore }`
-  -- the swipe deck; excludes candidates this recruiter already swiped on.
+  -- the swipe deck; excludes candidates this recruiter already swiped on and
+  anyone with `openToWork` off. Order: profiles active in the last 15 days
+  first, then best match (+10 for sign-ups under 7 days old), then newest.
   Filters, all optional: `q`, `skills` (comma separated, any match), `location`,
   `expMin`, `expMax` (years), `ctcMin`, `ctcMax` (LPA), `noticeMax` (days),
-  `jobId` (score against that posting), `sort=match`. Each candidate carries
-  `matchScore`, `matchJobTitle` and `matchReasons`.
+  `jobId` (score against that posting), `sort=newest` (plain newest first).
+  Each candidate carries `matchScore`, `matchJobTitle` and `matchReasons`.
+  Cards never include age, gender, phone or email.
 - `GET /candidates/:id` (recruiter)
-- `GET /candidates/me/profile` / `PUT /candidates/me/profile` (candidate)
+- `GET /candidates/me/profile` / `PUT /candidates/me/profile` (candidate) --
+  the PUT validates and answers `400 { error, field }`; required: `desiredRole`,
+  `phone`, `age` (16-75), `gender`, `location`, `qualification`, `degree`,
+  `skills` (1-30), `experience`, `expectedSalaryLpa` (values >= 1000 are
+  rupees and divided by 100000). Optional: `college`, `graduationYear`,
+  `currentPost`, `currentCompany`, `currentSalaryLpa`, `expectedSalaryMaxLpa`,
+  `salaryNegotiable`, `workModes`, `jobTypes`, `noticePeriod`, `about`, media urls.
+- `POST /candidates/me/resume/autofill` (candidate; multipart `resume`, PDF
+  up to 5 MB) -> `{ fields }` with only what was found (`phone`, `skills`,
+  `degree`, `qualification`, `graduationYear`, `college`, `desiredRole`,
+  `location`, `experienceYears`, `currentCompany`, `currentPost`). Nothing is
+  stored; a scanned PDF gives `{ fields: {} }`.
+- `POST /candidates/me/active` (candidate) -- "I'm still looking": `activeAt = now` -> profile
+- `PUT /candidates/me/preferences` (candidate)
+  `{ openToWork?, workModes?, jobTypes?, preferredLocations? }` -> profile
+- `GET /candidates/me/stats` (candidate) -> `{ viewedCount, wishlistedCount,
+  shortlistedCount, hiddenCount, shortlistedBy: [...] }`; a recruiter who only
+  shortlisted counts in `hiddenCount` and is named in `shortlistedBy` only once
+  they have an opportunity (contact) with the candidate.
+
+### Taxonomy
+
+- `GET /taxonomy` (any signed-in user) -> `{ roles, skills, degrees, cities,
+  states, locations }`; source: `src/lib/taxonomy.js`.
 
 ### Jobs
 

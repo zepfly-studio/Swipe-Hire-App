@@ -21,19 +21,34 @@ function toProfile(user) {
   };
 }
 
+// The candidate's own profile (they see everything, including age, gender
+// and phone). Recruiters never get this shape -- see toCandidate below.
 function toCandidateProfile(p) {
   return {
     age: p.age,
+    gender: p.gender ?? "",
+    phone: p.phone ?? "",
     qualification: p.qualification,
+    degree: p.degree ?? "",
+    college: p.college ?? "",
+    graduationYear: p.graduationYear ?? null,
     experience: p.experience,
     desiredRole: p.desiredRole,
     location: p.location,
     skills: p.skills,
     expectedSalaryLpa: p.expectedSalaryLpa,
+    expectedSalaryMaxLpa: p.expectedSalaryMaxLpa ?? null,
+    salaryNegotiable: p.salaryNegotiable ?? false,
     noticePeriod: p.noticePeriod,
     about: p.about,
     currentCompany: p.currentCompany,
+    currentPost: p.currentPost ?? "",
     currentSalaryLpa: p.currentSalaryLpa,
+    workModes: p.workModes ?? [],
+    jobTypes: p.jobTypes ?? [],
+    preferredLocations: p.preferredLocations ?? [],
+    openToWork: p.openToWork ?? true,
+    activeAt: iso(p.activeAt),
     photoUrl: p.photoUrl,
     resumeUrl: p.resumeUrl,
     introVideoUrl: p.introVideoUrl,
@@ -42,25 +57,36 @@ function toCandidateProfile(p) {
 
 // The swipe-deck card: users row joined with its candidate_profiles row.
 // `match` is { score, jobTitle, reasons } from lib/matching.js, when known.
+// Cards are what a recruiter sees BEFORE contacting anyone, so they never
+// carry age, gender, phone or email.
 function toCandidate(user, profile, match = null) {
   const p = profile || {};
   return {
     id: user.id,
     name: user.name,
-    age: p.age ?? 0,
     qualification: p.qualification ?? "",
+    degree: p.degree ?? "",
+    college: p.college ?? "",
+    graduationYear: p.graduationYear ?? null,
     experience: p.experience ?? "",
     role: p.desiredRole ?? "",
     location: p.location ?? "",
     currentCompany: p.currentCompany ?? "",
+    currentPost: p.currentPost ?? "",
     currentSalaryLpa: p.currentSalaryLpa ?? 0,
     expectedSalaryLpa: p.expectedSalaryLpa ?? 0,
+    expectedSalaryMaxLpa: p.expectedSalaryMaxLpa ?? null,
+    salaryNegotiable: p.salaryNegotiable ?? false,
     skills: p.skills ?? [],
+    workModes: p.workModes ?? [],
+    jobTypes: p.jobTypes ?? [],
+    preferredLocations: p.preferredLocations ?? [],
     photoUrl: p.photoUrl ?? "",
     resumeUrl: p.resumeUrl ?? "",
     introVideoUrl: p.introVideoUrl ?? "",
     about: p.about ?? "",
     noticePeriod: p.noticePeriod ?? "",
+    activeAt: iso(p.activeAt),
     matchScore: match ? match.score : null,
     matchJobTitle: match ? match.jobTitle ?? "" : "",
     matchReasons: match ? match.reasons ?? [] : [],

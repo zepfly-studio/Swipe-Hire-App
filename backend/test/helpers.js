@@ -110,7 +110,11 @@ async function signup(role, name, { password = "password123", domain, company } 
 
 const profileBody = {
   age: 26,
-  qualification: "B.Tech, VIT",
+  gender: "Male",
+  phone: "+91 98765 43210",
+  degree: "B.Tech",
+  college: "VIT",
+  qualification: "Graduate",
   experience: "3 years",
   desiredRole: "Flutter Developer",
   location: "Pune",

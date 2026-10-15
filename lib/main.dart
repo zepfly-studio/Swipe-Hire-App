@@ -6,7 +6,6 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:sentry_flutter/sentry_flutter.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'services/error_reporter.dart';
@@ -15,14 +14,7 @@ import 'theme/app_theme.dart';
 import 'widgets/app_toast.dart';
 
 Future<void> main() async {
-  if (kIsWeb && ErrorReporter.sentryWebDsn.isNotEmpty) {
-    await SentryFlutter.init(
-      (options) => options.dsn = ErrorReporter.sentryWebDsn,
-      appRunner: _runApp,
-    );
-  } else {
-    await _runApp();
-  }
+  await _runApp();
 }
 
 Future<void> _runApp() async {
@@ -38,17 +30,12 @@ Future<void> _runApp() async {
   }
 
   if (kIsWeb) {
-    // Crashlytics has no web implementation -- Sentry (above) covers web
-    // instead, when configured; this still catches Flutter framework
-    // errors and forwards them there.
+    // Crashlytics does not support web. Keep errors visible in the console.
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
-      if (ErrorReporter.sentryWebDsn.isNotEmpty) {
-        Sentry.captureException(details.exception, stackTrace: details.stack);
-      }
     };
     PlatformDispatcher.instance.onError = (error, stackTrace) {
-      if (ErrorReporter.sentryWebDsn.isNotEmpty) Sentry.captureException(error, stackTrace: stackTrace);
+      debugPrint('[Web Error] $error\n$stackTrace');
       return true;
     };
   } else {
@@ -105,6 +92,3 @@ class HiringApp extends StatelessWidget {
     );
   }
 }
-
-
-

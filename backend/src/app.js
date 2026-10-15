@@ -11,6 +11,7 @@ const jobRoutes = require("./routes/jobs");
 const opportunityRoutes = require("./routes/opportunities");
 const swipeRoutes = require("./routes/swipes");
 const companyRoutes = require("./routes/company");
+const taxonomyRoutes = require("./routes/taxonomy");
 const { notifications: notificationRoutes, templates: templateRoutes } = require("./routes/inbox");
 
 // Builds the Express app without starting a listener, so the same app can
@@ -56,6 +57,7 @@ function createApp() {
   app.use("/opportunities", apiLimiter, opportunityRoutes);
   app.use("/swipes", apiLimiter, swipeRoutes);
   app.use("/company", apiLimiter, companyRoutes);
+  app.use("/taxonomy", apiLimiter, taxonomyRoutes);
   app.use("/notifications", apiLimiter, notificationRoutes);
   app.use("/templates", apiLimiter, templateRoutes);
 

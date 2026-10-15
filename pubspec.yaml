@@ -45,7 +45,7 @@ dependencies:
 
   # Web-only crash/error reporting -- Crashlytics has no web SDK, so web
   # errors were previously debugPrint-only with zero visibility.
-  sentry_flutter: ^8.10.1
+  
 
   # Media uploads (Cloudinary free tier -- avoids needing the Blaze plan
   # that Firebase Storage now requires for new projects)
@@ -63,6 +63,7 @@ dependencies:
   url_launcher: ^6.3.1
   file_picker: ^13.1.0
   sonner_toast: ^2.0.2
+  camera: ^0.12.1
 
 dev_dependencies:
   flutter_test:
@@ -82,13 +83,13 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#6D4AFF"
+  adaptive_icon_background: "#1F4D42"
   adaptive_icon_foreground: "assets/icon/icon_foreground.png"
   web:
     generate: true
     image_path: "assets/icon/icon.png"
-    background_color: "#F5F5FA"
-    theme_color: "#EC3D64"
+    background_color: "#F0F0EE"
+    theme_color: "#1F4D42"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

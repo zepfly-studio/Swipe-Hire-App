@@ -50,19 +50,20 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDUKZvQMQjcG-MYSgt1KDdNFImPmpwRGSc',
-    appId: '1:625477683819:web:37df96d339aa54c0043f2e',
-    messagingSenderId: '625477683819',
-    projectId: 'swipehire-app-cj',
-    authDomain: 'swipehire-app-cj.firebaseapp.com',
-    storageBucket: 'swipehire-app-cj.firebasestorage.app',
+    apiKey: 'AIzaSyBrGEEY385BFf9KuyFewf-BQoOUlDeiJcw',
+    appId: '1:385632416704:web:273e5f1d2bc260b7f18e25',
+    messagingSenderId: '385632416704',
+    projectId: 'swipehire-app-zepfly',
+    authDomain: 'swipehire-app-zepfly.firebaseapp.com',
+    storageBucket: 'swipehire-app-zepfly.firebasestorage.app',
+    measurementId: 'G-70LRVVXG1K',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCf2RiZ-ddwI_7oi5avLjZCFB4vE-9jbrU',
-    appId: '1:625477683819:android:21492559e3b9bb55043f2e',
-    messagingSenderId: '625477683819',
-    projectId: 'swipehire-app-cj',
-    storageBucket: 'swipehire-app-cj.firebasestorage.app',
+    apiKey: 'AIzaSyCVK1lAdnMHKx1QUk19_1nZRN2rRI96U3o',
+    appId: '1:385632416704:android:4650b7fd3c40559ef18e25',
+    messagingSenderId: '385632416704',
+    projectId: 'swipehire-app-zepfly',
+    storageBucket: 'swipehire-app-zepfly.firebasestorage.app',
   );
 }

@@ -1,0 +1,14 @@
+-- AlterTable
+ALTER TABLE "candidate_profiles" ADD COLUMN     "activeAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "college" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "currentPost" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "degree" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "expectedSalaryMaxLpa" DOUBLE PRECISION,
+ADD COLUMN     "gender" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "graduationYear" INTEGER,
+ADD COLUMN     "jobTypes" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "openToWork" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "phone" TEXT NOT NULL DEFAULT '',
+ADD COLUMN     "preferredLocations" TEXT[] DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN     "salaryNegotiable" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "workModes" TEXT[] DEFAULT ARRAY[]::TEXT[];

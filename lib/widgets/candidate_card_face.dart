@@ -252,10 +252,10 @@ class InitialsAvatar extends StatelessWidget {
 
   static const List<List<Color>> _palettes = [
     [AppColors.accent, AppColors.accentAlt],
-    [Color(0xFFFF6B9D), Color(0xFFFFA36B)],
+    [Color(0xFF3F7F6D), Color(0xFF6FA593)],
     [Color(0xFF10B981), AppColors.like],
     [AppColors.info, AppColors.accent],
-    [Color(0xFFFFA36B), AppColors.accentAlt],
+    [Color(0xFF8DB5A6), AppColors.accentAlt],
   ];
 
   String get _initials {

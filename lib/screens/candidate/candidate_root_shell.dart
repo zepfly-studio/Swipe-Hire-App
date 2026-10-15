@@ -4,21 +4,19 @@ import '../../models/candidate_profile.dart';
 import '../../services/auth_service.dart';
 import '../../services/candidate_profile_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/derive.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
 import 'candidate_applications_screen.dart';
-import 'candidate_dashboard_screen.dart';
-import 'candidate_jobs_screen.dart';
+import 'candidate_home_screen.dart';
 import 'candidate_profile_screen.dart';
-import 'candidate_saved_jobs_screen.dart';
+import 'onboarding/candidate_onboarding_screen.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/notification_bell.dart';
 
-/// Bottom-nav shell for a candidate account: Dashboard, Browse Jobs, My
-/// Applications, Saved and Profile. Mirrors the recruiter's [RootShell]
-/// pattern -- an IndexedStack keeps each tab's scroll position alive while
-/// switching.
+/// Bottom-nav shell for a candidate account: Home, Activity (companies'
+/// messages, tasks and interviews) and Profile. Mirrors the recruiter's
+/// [RootShell] pattern -- an IndexedStack keeps each tab's scroll position
+/// alive while switching.
 class CandidateRootShell extends StatefulWidget {
   final AppUser user;
   const CandidateRootShell({super.key, required this.user});
@@ -39,9 +37,30 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
 
   void _goTo(int index) => setState(() => _index = index);
 
+  /// A profile change made on the Home tab (preferences, "I'm active").
+  void _onProfileChanged(CandidateProfile updated) {
+    setState(() => _profileFuture = Future.value(updated));
+  }
+
+  /// A profile saved through the edit flow.
   void _onProfileUpdated(CandidateProfile updated) {
     setState(() => _profileFuture = Future.value(updated));
-    AppToast.success('Profile updated', description: 'Recruiters see your latest details on their swipe deck.');
+    AppToast.success(
+      'Profile updated',
+      description: 'Companies see your latest details on their swipe deck.',
+    );
+  }
+
+  Future<void> _editProfile(CandidateProfile current) async {
+    final updated = await Navigator.of(context).push<CandidateProfile>(
+      MaterialPageRoute(
+        builder: (_) => CandidateOnboardingScreen(
+          user: widget.user,
+          existingProfile: current,
+        ),
+      ),
+    );
+    if (updated != null) _onProfileUpdated(updated);
   }
 
   @override
@@ -53,7 +72,9 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
             future: _profileFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(color: AppColors.accentAlt));
+                return const Center(
+                  child: CircularProgressIndicator(color: AppColors.accentAlt),
+                );
               }
               final profile = snapshot.data;
               if (profile == null) {
@@ -62,11 +83,18 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
               return IndexedStack(
                 index: _index,
                 children: [
-                  CandidateDashboardScreen(user: widget.user, profile: profile, onViewAllApplications: () => _goTo(2)),
-                  CandidateJobsScreen(user: widget.user, myExperienceYears: profile.experience.isEmpty ? null : parseExperienceYears(profile.experience)),
+                  CandidateHomeScreen(
+                    user: widget.user,
+                    profile: profile,
+                    onProfileChanged: _onProfileChanged,
+                    onEditProfile: () => _editProfile(profile),
+                  ),
                   CandidateApplicationsScreen(user: widget.user),
-                  CandidateSavedJobsScreen(user: widget.user),
-                  CandidateProfileScreen(user: widget.user, profile: profile, onProfileUpdated: _onProfileUpdated),
+                  CandidateProfileScreen(
+                    user: widget.user,
+                    profile: profile,
+                    onProfileUpdated: _onProfileUpdated,
+                  ),
                 ],
               );
             },
@@ -76,14 +104,20 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: AppColors.surface,
-          indicatorColor: AppColors.accent.withValues(alpha: 0.25),
+          indicatorColor: AppColors.primary.withValues(alpha: 0.12),
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             final selected = states.contains(WidgetState.selected);
-            return TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selected ? AppColors.accentAlt : AppColors.textSecondary);
+            return TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: selected ? AppColors.accentAlt : AppColors.textSecondary,
+            );
           }),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             final selected = states.contains(WidgetState.selected);
-            return IconThemeData(color: selected ? AppColors.accentAlt : AppColors.textSecondary);
+            return IconThemeData(
+              color: selected ? AppColors.accentAlt : AppColors.textSecondary,
+            );
           }),
         ),
         child: NavigationBar(
@@ -91,15 +125,21 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
           onDestinationSelected: _goTo,
           height: 64,
           destinations: const [
-            NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Dashboard'),
-            NavigationDestination(icon: Icon(Icons.work_outline_rounded), selectedIcon: Icon(Icons.work_rounded), label: 'Jobs'),
             NavigationDestination(
-              icon: UnreadChatIcon(icon: Icons.description_outlined),
-              selectedIcon: UnreadChatIcon(icon: Icons.description_rounded),
-              label: 'Applications',
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded),
+              label: 'Home',
             ),
-            NavigationDestination(icon: Icon(Icons.bookmark_border_rounded), selectedIcon: Icon(Icons.bookmark_rounded), label: 'Saved'),
-            NavigationDestination(icon: Icon(Icons.person_outline_rounded), selectedIcon: Icon(Icons.person_rounded), label: 'Profile'),
+            NavigationDestination(
+              icon: UnreadChatIcon(icon: Icons.forum_outlined),
+              selectedIcon: UnreadChatIcon(icon: Icons.forum_rounded),
+              label: 'Activity',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline_rounded),
+              selectedIcon: Icon(Icons.person_rounded),
+              label: 'Profile',
+            ),
           ],
         ),
       ),
@@ -122,9 +162,16 @@ class _MissingProfileState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.person_off_outlined, size: 56, color: AppColors.textSecondary),
+              const Icon(
+                Icons.person_off_outlined,
+                size: 56,
+                color: AppColors.textSecondary,
+              ),
               const SizedBox(height: 16),
-              const Text('We could not find your profile', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const Text(
+                'We could not find your profile',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: () => AuthService.instance.signOut(),

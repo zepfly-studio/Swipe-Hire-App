@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show File;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+
+import 'upload_progress.dart';
 
 /// Uploads a candidate's photo/resume/intro video to Cloudinary instead of
 /// Firebase Storage, which Google now requires the Blaze (paid) plan for
@@ -38,7 +41,7 @@ class CloudinaryService {
   static const int _maxResumeBytes = 8 * 1024 * 1024;
   static const int _maxVideoBytes = 60 * 1024 * 1024;
   static const List<String> _imageExtensions = ['jpg', 'jpeg', 'png', 'webp'];
-  static const List<String> _videoExtensions = ['mp4', 'mov', 'm4v'];
+  static const List<String> _videoExtensions = ['mp4', 'mov', 'm4v', 'webm'];
   static const List<String> _resumeExtensions = ['pdf'];
 
   /// What a candidate can attach to a task submission.
@@ -52,6 +55,13 @@ class CloudinaryService {
   Future<String> uploadIntroVideo(PlatformFile file) =>
       _upload(file, resourceType: 'video', maxBytes: _maxVideoBytes, allowedExtensions: _videoExtensions);
 
+  /// Path-based uploads for the onboarding flow (a PDF the candidate picked,
+  /// or a clip the in-app recorder just wrote). [onProgress] gets 0..1.
+  Future<String> uploadResumeFile(String path, {String? name, void Function(double progress)? onProgress}) =>
+      _uploadPath(path, name, resourceType: 'raw', maxBytes: _maxResumeBytes, allowedExtensions: _resumeExtensions, onProgress: onProgress);
+  Future<String> uploadIntroVideoFile(String path, {String? name, void Function(double progress)? onProgress}) =>
+      _uploadPath(path, name, resourceType: 'video', maxBytes: _maxVideoBytes, allowedExtensions: _videoExtensions, onProgress: onProgress);
+
   /// A file attached to a task submission. Pictures go up as images (so
   /// they preview), everything else as a raw file. The unsigned preset has
   /// to allow these formats in the Cloudinary dashboard.
@@ -63,6 +73,30 @@ class CloudinaryService {
       maxBytes: _maxTaskFileBytes,
       allowedExtensions: taskFileExtensions,
     );
+  }
+
+  Future<String> _uploadPath(
+    String path,
+    String? name, {
+    required String resourceType,
+    required int maxBytes,
+    required List<String> allowedExtensions,
+    void Function(double progress)? onProgress,
+  }) async {
+    final filename = (name == null || name.isEmpty) ? path.split(RegExp(r'[\\/]')).last : name;
+    final size = await File(path).length();
+    if (size > maxBytes) {
+      throw StateError('$filename is too large (max ${(maxBytes / (1024 * 1024)).toStringAsFixed(0)} MB).');
+    }
+    final dot = filename.lastIndexOf('.');
+    final ext = dot < 0 ? null : filename.substring(dot + 1).toLowerCase();
+    if (ext == null || !allowedExtensions.contains(ext)) {
+      throw StateError('$filename has an unsupported file type.');
+    }
+    final uri = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload');
+    final request = http.MultipartRequest('POST', uri)..fields['upload_preset'] = uploadPreset;
+    request.files.add(await http.MultipartFile.fromPath('file', path, filename: filename));
+    return _send(request, onProgress: onProgress);
   }
 
   Future<String> _upload(
@@ -85,10 +119,13 @@ class CloudinaryService {
 
     final bytes = await file.readAsBytes();
     request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: file.name));
+    return _send(request);
+  }
 
+  Future<String> _send(http.MultipartRequest request, {void Function(double progress)? onProgress}) async {
     final http.Response response;
     try {
-      final streamedResponse = await request.send().timeout(_uploadTimeout);
+      final streamedResponse = await withUploadProgress(request, onProgress).send().timeout(_uploadTimeout);
       response = await http.Response.fromStream(streamedResponse).timeout(_uploadTimeout);
     } on TimeoutException {
       throw StateError('The upload took too long. Check your connection and try again.');

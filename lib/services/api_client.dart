@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart' show VoidCallback, kDebugMode, kIsWeb, 
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 
+import 'upload_progress.dart';
+
 /// Thrown for any failed call to the backend; [message] is safe to show.
 /// [statusCode] is the HTTP status, or `0` when no response arrived at all
 /// (offline, DNS failure, timeout) -- see [isNetworkError].
@@ -66,7 +68,10 @@ class ApiClient {
 
   static const _tokenBox = 'auth_token_box';
   static const _tokenKey = 'token';
-  static const _configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const _configuredBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://swipe-hire-app.onrender.com',
+  );
 
   /// How long to wait for the server before giving up.
   static const Duration _defaultTimeout = Duration(seconds: 20);
@@ -141,7 +146,16 @@ class ApiClient {
     } on http.ClientException {
       throw ApiException(0, 'Network error. Check your connection and try again.');
     }
+    return _handleResponse(response, auth: auth, signOutOn401: signOutOn401);
+  }
 
+  /// Turns a raw response into the decoded JSON body, or throws the
+  /// [ApiException] the backend's `{error, field?}` answer describes.
+  Map<String, dynamic> _handleResponse(
+    http.Response response, {
+    required bool auth,
+    bool signOutOn401 = true,
+  }) {
     final ok = response.statusCode >= 200 && response.statusCode < 300;
     Map<String, dynamic> decoded = const {};
     if (response.body.isNotEmpty) {
@@ -181,6 +195,40 @@ class ApiClient {
       _request('PATCH', path, body: body ?? const {}, auth: true);
 
   Future<Map<String, dynamic>> delete(String path) => _request('DELETE', path, auth: true);
+
+  /// Uploads one file as `multipart/form-data` (Bearer token attached), e.g.
+  /// the resume PDF for `POST /candidates/me/resume/autofill`. [onProgress]
+  /// gets 0..1 as bytes leave the device. Errors are mapped exactly like
+  /// the JSON helpers: a network problem is an [ApiException] with status 0,
+  /// a rejected request carries the server's `error` message and body.
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required String fileField,
+    required String filePath,
+    String? filename,
+    Map<String, String>? fields,
+    void Function(double progress)? onProgress,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
+    final t = await token;
+    if (t != null) request.headers['Authorization'] = 'Bearer $t';
+    if (fields != null) request.fields.addAll(fields);
+    request.files.add(await http.MultipartFile.fromPath(fileField, filePath, filename: filename));
+
+    final http.Response response;
+    try {
+      final streamed = await _client.send(withUploadProgress(request, onProgress)).timeout(timeout);
+      response = await http.Response.fromStream(streamed).timeout(timeout);
+    } on TimeoutException {
+      throw ApiException(0, 'The upload took too long. Please try again.');
+    } on SocketException {
+      throw ApiException(0, 'Network error. Check your connection and try again.');
+    } on http.ClientException {
+      throw ApiException(0, 'Network error. Check your connection and try again.');
+    }
+    return _handleResponse(response, auth: true);
+  }
 
   // -- Auth ---------------------------------------------------------------
 

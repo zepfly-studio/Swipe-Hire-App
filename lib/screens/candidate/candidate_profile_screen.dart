@@ -7,7 +7,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/candidate_card_face.dart';
 import '../../widgets/fade_in_up.dart';
 import '../auth/account_actions.dart';
-import '../auth/complete_profile_screen.dart';
+import 'onboarding/candidate_onboarding_screen.dart';
+import '../../utils/profile_strength.dart';
 import '../legal/privacy_policy_screen.dart';
 import '../legal/terms_of_service_screen.dart';
 import '../resume_screen.dart';
@@ -31,7 +32,10 @@ class CandidateProfileScreen extends StatelessWidget {
 
   Future<void> _edit(BuildContext context) async {
     final updated = await Navigator.of(context).push<CandidateProfile>(
-      MaterialPageRoute(builder: (_) => CompleteProfileScreen(user: user, existingCandidateProfile: profile)),
+      MaterialPageRoute(
+        builder: (_) =>
+            CandidateOnboardingScreen(user: user, existingProfile: profile),
+      ),
     );
     if (updated == null) return;
     onProfileUpdated(updated);
@@ -66,7 +70,9 @@ class CandidateProfileScreen extends StatelessWidget {
       _edit(context);
       return;
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ResumeScreen(candidate: _asCandidate)));
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ResumeScreen(candidate: _asCandidate)),
+    );
   }
 
   void _viewIntroVideo(BuildContext context) {
@@ -74,24 +80,14 @@ class CandidateProfileScreen extends StatelessWidget {
       _edit(context);
       return;
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => VideoIntroScreen(candidate: _asCandidate)));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => VideoIntroScreen(candidate: _asCandidate),
+      ),
+    );
   }
 
-  int get _completionPercent {
-    final fields = <bool>[
-      profile.age > 0,
-      profile.qualification.isNotEmpty,
-      profile.experience.isNotEmpty,
-      profile.desiredRole.isNotEmpty,
-      profile.location.isNotEmpty,
-      profile.skills.isNotEmpty,
-      profile.expectedSalaryLpa > 0,
-      profile.noticePeriod.isNotEmpty,
-      profile.about.isNotEmpty,
-    ];
-    final filled = fields.where((f) => f).length;
-    return ((filled / fields.length) * 100).round();
-  }
+  int get _completionPercent => computeProfileStrength(profile).score;
 
   @override
   Widget build(BuildContext context) {
@@ -101,35 +97,60 @@ class CandidateProfileScreen extends StatelessWidget {
         FadeInUp(
           child: Row(
             children: [
-              SizedBox(width: 64, height: 64, child: ClipOval(child: InitialsAvatar(name: user.name))),
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: ClipOval(child: InitialsAvatar(name: user.name)),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    Text(
+                      user.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(user.email, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5), overflow: TextOverflow.ellipsis),
+                    Text(
+                      user.email,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12.5,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
-              IconButton(
+              OutlinedButton.icon(
                 onPressed: () => _edit(context),
-                icon: const Icon(Icons.edit_outlined, color: AppColors.accentAlt),
-                tooltip: 'Edit profile',
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Edit profile'),
               ),
             ],
           ),
         ),
         const SizedBox(height: 18),
-        FadeInUp(delay: const Duration(milliseconds: 40), child: _buildCompletionBar()),
+        FadeInUp(
+          delay: const Duration(milliseconds: 40),
+          child: _buildCompletionBar(),
+        ),
         const SizedBox(height: 20),
         FadeInUp(
           delay: const Duration(milliseconds: 80),
           child: _DetailTile(
             icon: Icons.badge_outlined,
             label: 'Personal Information',
-            value: '${profile.age > 0 ? '${profile.age} yrs' : 'Age not set'} · ${profile.location.isEmpty ? 'Location not set' : profile.location}',
+            value:
+                '${profile.age > 0 ? '${profile.age} yrs' : 'Age not set'} · ${profile.location.isEmpty ? 'Location not set' : profile.location}',
             onTap: () => _edit(context),
           ),
         ),
@@ -138,7 +159,8 @@ class CandidateProfileScreen extends StatelessWidget {
           child: _DetailTile(
             icon: Icons.work_outline_rounded,
             label: 'Professional Details',
-            value: '${profile.desiredRole.isEmpty ? 'Role not set' : profile.desiredRole} · ${profile.experience.isEmpty ? '-' : profile.experience}'
+            value:
+                '${profile.desiredRole.isEmpty ? 'Role not set' : profile.desiredRole} · ${profile.experience.isEmpty ? '-' : profile.experience}'
                 '${profile.currentCompany.isEmpty ? '' : ' · currently at ${profile.currentCompany}'}',
             onTap: () => _edit(context),
           ),
@@ -148,7 +170,9 @@ class CandidateProfileScreen extends StatelessWidget {
           child: _DetailTile(
             icon: Icons.school_outlined,
             label: 'Education',
-            value: profile.qualification.isEmpty ? 'Not added' : profile.qualification,
+            value: profile.qualification.isEmpty
+                ? 'Not added'
+                : profile.qualification,
             onTap: () => _edit(context),
           ),
         ),
@@ -157,7 +181,9 @@ class CandidateProfileScreen extends StatelessWidget {
           child: _DetailTile(
             icon: Icons.auto_awesome_outlined,
             label: 'Skills',
-            value: profile.skills.isEmpty ? 'Not added' : profile.skills.join(', '),
+            value: profile.skills.isEmpty
+                ? 'Not added'
+                : profile.skills.join(', '),
             onTap: () => _edit(context),
           ),
         ),
@@ -166,7 +192,8 @@ class CandidateProfileScreen extends StatelessWidget {
           child: _DetailTile(
             icon: Icons.payments_outlined,
             label: 'Preferences',
-            value: '${profile.expectedSalaryLpa > 0 ? '₹${profile.expectedSalaryLpa.toStringAsFixed(1)} LPA' : 'CTC not set'} · ${profile.noticePeriod.isEmpty ? 'Notice period not set' : profile.noticePeriod}',
+            value:
+                '${profile.expectedSalaryLpa > 0 ? '₹${profile.expectedSalaryLpa.toStringAsFixed(1)} LPA' : 'CTC not set'} · ${profile.noticePeriod.isEmpty ? 'Notice period not set' : profile.noticePeriod}',
             onTap: () => _edit(context),
           ),
         ),
@@ -175,8 +202,12 @@ class CandidateProfileScreen extends StatelessWidget {
           child: _DetailTile(
             icon: Icons.description_outlined,
             label: 'Resume',
-            value: profile.resumeUrl.isEmpty ? 'Not uploaded -- tap to add' : 'Uploaded · tap to view',
-            iconColor: profile.resumeUrl.isEmpty ? AppColors.accentAlt : AppColors.like,
+            value: profile.resumeUrl.isEmpty
+                ? 'Not uploaded -- tap to add'
+                : 'Uploaded · tap to view',
+            iconColor: profile.resumeUrl.isEmpty
+                ? AppColors.accentAlt
+                : AppColors.like,
             onTap: () => _viewResume(context),
           ),
         ),
@@ -185,8 +216,12 @@ class CandidateProfileScreen extends StatelessWidget {
           child: _DetailTile(
             icon: Icons.videocam_outlined,
             label: 'Intro Video',
-            value: profile.introVideoUrl.isEmpty ? 'Not uploaded -- tap to add' : 'Uploaded · tap to watch',
-            iconColor: profile.introVideoUrl.isEmpty ? AppColors.accentAlt : AppColors.like,
+            value: profile.introVideoUrl.isEmpty
+                ? 'Not uploaded -- tap to add'
+                : 'Uploaded · tap to watch',
+            iconColor: profile.introVideoUrl.isEmpty
+                ? AppColors.accentAlt
+                : AppColors.like,
             onTap: () => _viewIntroVideo(context),
           ),
         ),
@@ -205,7 +240,9 @@ class CandidateProfileScreen extends StatelessWidget {
             icon: Icons.privacy_tip_outlined,
             label: 'Privacy Policy',
             value: '',
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()),
+            ),
           ),
         ),
         FadeInUp(
@@ -214,7 +251,9 @@ class CandidateProfileScreen extends StatelessWidget {
             icon: Icons.description_outlined,
             label: 'Terms of Service',
             value: '',
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsOfServiceScreen())),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const TermsOfServiceScreen()),
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -265,9 +304,19 @@ class CandidateProfileScreen extends StatelessWidget {
           Row(
             children: [
               const Expanded(
-                child: Text('Profile Completion', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                child: Text(
+                  'Profile strength',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
               ),
-              Text('$percent%', style: const TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w800, fontSize: 13.5)),
+              Text(
+                '$percent%',
+                style: const TextStyle(
+                  color: AppColors.accentAlt,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -315,7 +364,10 @@ class _DetailTile extends StatelessWidget {
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
             child: Row(
               children: [
                 Icon(icon, size: 19, color: iconColor ?? AppColors.accentAlt),
@@ -324,15 +376,33 @@ class _DetailTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(label, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: labelColor)),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: labelColor,
+                        ),
+                      ),
                       if (value.isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        Text(value, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11.5), overflow: TextOverflow.ellipsis),
+                        Text(
+                          value,
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ],
                   ),
                 ),
-                if (labelColor == null) const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                if (labelColor == null)
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textSecondary,
+                  ),
               ],
             ),
           ),

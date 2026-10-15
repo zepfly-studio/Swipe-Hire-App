@@ -10,6 +10,7 @@ import '../../services/wishlist_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../candidate/candidate_root_shell.dart';
+import '../candidate/onboarding/candidate_onboarding_screen.dart';
 import '../root_shell.dart';
 import 'complete_profile_screen.dart';
 import 'login_screen.dart';
@@ -51,7 +52,9 @@ class _SignedInGateState extends State<_SignedInGate> {
   late Future<AppUser?> _profile = _load();
 
   Future<AppUser?> _load() async {
-    final profile = await AuthService.instance.fetchProfileWithRetry(widget.uid);
+    final profile = await AuthService.instance.fetchProfileWithRetry(
+      widget.uid,
+    );
     if (profile == null) {
       // No valid session behind this Firebase user -- start over.
       await AuthService.instance.signOut();
@@ -82,14 +85,24 @@ class _SignedInGateState extends State<_SignedInGate> {
         if (snapshot.hasError) {
           final error = snapshot.error;
           return _ConnectionProblemScreen(
-            message: error is ApiException ? error.message : 'Something went wrong while loading your account.',
+            message: error is ApiException
+                ? error.message
+                : 'Something went wrong while loading your account.',
             onRetry: _retry,
           );
         }
         final profile = snapshot.data;
         if (profile == null) return const _LoadingScreen();
-        if (!profile.profileComplete) return CompleteProfileScreen(user: profile);
-        return profile.role == UserRole.recruiter ? const RootShell() : CandidateRootShell(user: profile);
+        if (!profile.profileComplete) {
+          // Recruiters keep the existing form for now; candidates get the
+          // 4-step onboarding.
+          return profile.role == UserRole.candidate
+              ? CandidateOnboardingScreen(user: profile)
+              : CompleteProfileScreen(user: profile);
+        }
+        return profile.role == UserRole.recruiter
+            ? const RootShell()
+            : CandidateRootShell(user: profile);
       },
     );
   }
@@ -102,7 +115,9 @@ class _LoadingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: AnimatedBackdrop(
-        child: Center(child: CircularProgressIndicator(color: AppColors.accentAlt)),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.accentAlt),
+        ),
       ),
     );
   }
@@ -111,7 +126,10 @@ class _LoadingScreen extends StatelessWidget {
 class _ConnectionProblemScreen extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-  const _ConnectionProblemScreen({required this.message, required this.onRetry});
+  const _ConnectionProblemScreen({
+    required this.message,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -123,14 +141,24 @@ class _ConnectionProblemScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud_off_rounded, size: 56, color: AppColors.textSecondary),
+                const Icon(
+                  Icons.cloud_off_rounded,
+                  size: 56,
+                  color: AppColors.textSecondary,
+                ),
                 const SizedBox(height: 16),
-                const Text('We could not reach SwipeHire', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const Text(
+                  'We could not reach SwipeHire',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 22),
                 FilledButton.icon(
