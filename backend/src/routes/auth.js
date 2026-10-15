@@ -205,12 +205,12 @@ router.post("/google", async (req, res) => {
   if (!user) {
     const role = req.body?.role;
     if (role !== "candidate" && role !== "recruiter") {
-      return res.status(409).json({ error: "Choose how you want to use SwipeHire.", needsRole: true });
+      return res.status(409).json({ error: "Choose how you want to use GlideRecruit.", needsRole: true });
     }
     // The account has no password of its own; a long random one keeps the
     // column filled and unguessable. "Forgot password" can set a real one.
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
-    const name = String(claims.name || email.split("@")[0]).trim().slice(0, 100) || "SwipeHire user";
+    const name = String(claims.name || email.split("@")[0]).trim().slice(0, 100) || "GlideRecruit user";
     user = await prisma.user.create({
       data: { name, email, passwordHash, role, emailVerified: true },
     });

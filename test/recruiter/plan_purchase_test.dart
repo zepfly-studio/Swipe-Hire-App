@@ -59,7 +59,7 @@ void main() {
     expect(req.keyId, 'rzp_test_key');
     expect(req.orderId, 'order_2');
     expect(req.amountPaise, 39900);
-    expect(req.name, 'Swipe Hire');
+    expect(req.name, 'GlideRecruit');
     expect(req.description, 'Starter plan · 150 swipes');
     expect(req.email, 'hr@acme.com');
     expect(service.verifyCalls.single, (orderId: 'order_2', paymentId: 'pay_9', signature: 'sig_9'));

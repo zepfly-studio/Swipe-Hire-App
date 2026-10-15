@@ -48,7 +48,7 @@ const confirm = (rec, code) => api("POST", "/company/verification/email/confirm"
 
 /** The code the app emailed to this address most recently. */
 function emailedCode(to) {
-  const mail = [...emails].reverse().find((e) => e.to === to && /is your Swipe Hire code$/.test(e.subject));
+  const mail = [...emails].reverse().find((e) => e.to === to && /is your GlideRecruit code$/.test(e.subject));
   assert.ok(mail, `no code email for ${to}`);
   return mail.subject.split(" ")[0];
 }

@@ -1,4 +1,4 @@
-// Who counts as a Swipe Hire admin: an address in ADMIN_EMAILS (comma
+// Who counts as a GlideRecruit admin: an address in ADMIN_EMAILS (comma
 // separated, case-insensitive) whose email is verified.
 function adminEmails() {
   return String(process.env.ADMIN_EMAILS || "")

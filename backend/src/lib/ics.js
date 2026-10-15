@@ -31,7 +31,7 @@ function buildInterviewIcs({ uid, start, durationMinutes = 60, summary, descript
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//SwipeHire//Interview//EN",
+    "PRODID:-//GlideRecruit//Interview//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",

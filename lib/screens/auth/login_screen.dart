@@ -205,7 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Image.asset('assets/images/logo_mark.png', width: 104, filterQuality: FilterQuality.high),
         const SizedBox(height: 10),
         const Text(
-          'Swipe Hire',
+          'GlideRecruit',
           style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w800,
@@ -216,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 16),
         const Text('Welcome back', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('Log in to Swipe Hire', style: TextStyle(color: AppColors.textSecondary)),
+        const Text('Log in to GlideRecruit', style: TextStyle(color: AppColors.textSecondary)),
       ],
     );
   }

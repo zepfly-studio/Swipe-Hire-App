@@ -62,7 +62,7 @@ class FakeApi extends ApiClient {
     googleIdToken = idToken;
     googleRole = role;
     if (role == null) {
-      throw ApiException(409, 'Choose how you will use SwipeHire.', body: {'needsRole': true});
+      throw ApiException(409, 'Choose how you will use GlideRecruit.', body: {'needsRole': true});
     }
     account = {
       'uid': 'pg-google',

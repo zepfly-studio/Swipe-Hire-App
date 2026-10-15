@@ -353,7 +353,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           const Text(
-            'SwipeHire',
+            'GlideRecruit',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.primary),
           ),
           const Spacer(),

@@ -283,7 +283,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Swipe Hire',
+                  'GlideRecruit',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.primary),
                 ),
                 if (first.isNotEmpty)

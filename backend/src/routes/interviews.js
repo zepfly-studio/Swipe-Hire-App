@@ -104,7 +104,7 @@ router.post("/", onlyCompany, async (req, res) => {
     if (meetingLink.length > 300) return fail(res, 400, "Meeting link is too long (max 300 characters)", "meetingLink");
     if (!/^https:\/\/\S+$/i.test(meetingLink)) return fail(res, 400, "Meeting link must start with https://", "meetingLink");
   } else if (mode === "video") {
-    meetingLink = `https://meet.jit.si/SwipeHire-${crypto.randomBytes(6).toString("hex")}`;
+    meetingLink = `https://meet.jit.si/GlideRecruit-${crypto.randomBytes(6).toString("hex")}`;
   }
 
   const note = typeof body.note === "string" ? body.note.trim() : "";
@@ -161,7 +161,7 @@ router.post("/", onlyCompany, async (req, res) => {
   ];
   if (mode === "in-person" && location) lines.push(`Location: ${location}`);
   if (note) lines.push(`Note: ${note}`);
-  lines.push("Open SwipeHire to choose a time.");
+  lines.push("Open GlideRecruit to choose a time.");
   inBackground(
     notify(candidateId, {
       title: `${company} invited you to an interview`,

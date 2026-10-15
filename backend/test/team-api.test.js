@@ -108,7 +108,7 @@ describe("team invites", () => {
     const other = await h.signup("candidate", "Existing Person");
     const taken = await api("POST", "/team/invite", { token: owner.token, body: { email: other.email } });
     assert.equal(taken.status, 409);
-    assert.equal(taken.json.error, "This email already has a Swipe Hire account");
+    assert.equal(taken.json.error, "This email already has a GlideRecruit account");
 
     // Owner + 9 pending invites = 10 people.
     const emails = [];

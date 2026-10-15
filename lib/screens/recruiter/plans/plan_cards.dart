@@ -156,7 +156,7 @@ class _FreeCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '$freeSwipes swipes to try Swipe Hire',
+            '$freeSwipes swipes to try GlideRecruit',
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 13.5),
           ),
           const _Perk('Given on sign-up'),

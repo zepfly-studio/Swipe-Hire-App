@@ -145,7 +145,7 @@ router.post("/", onlyCompany, async (req, res) => {
   inBackground(
     notify(candidateId, {
       title: `${company} sent you a task`,
-      body: `"${title}" is due ${formatWhen(task.dueAt, { withYear: true })}. Open SwipeHire to see the details and submit your work.`,
+      body: `"${title}" is due ${formatWhen(task.dueAt, { withYear: true })}. Open GlideRecruit to see the details and submit your work.`,
       type: "task",
       link: "/tasks",
       email: { subject: `New task from ${company}` },

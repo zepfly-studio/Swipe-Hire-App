@@ -77,7 +77,7 @@ team.post("/invite", ownerOnly, async (req, res) => {
     return res.status(400).json({ error: "Enter a valid email address", field: "email" });
   }
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
-    return res.status(409).json({ error: "This email already has a Swipe Hire account", field: "email" });
+    return res.status(409).json({ error: "This email already has a GlideRecruit account", field: "email" });
   }
 
   const ownerId = req.user.id;
@@ -110,11 +110,11 @@ team.post("/invite", ownerOnly, async (req, res) => {
     try {
       await sendNotificationEmail({
         to: email,
-        subject: `${req.user.name} invited you to join ${companyName} on Swipe Hire`,
-        heading: `Join ${companyName} on Swipe Hire`,
+        subject: `${req.user.name} invited you to join ${companyName} on GlideRecruit`,
+        heading: `Join ${companyName} on GlideRecruit`,
         body: [
           `${req.user.name} invited you to hire together as part of ${companyName}.`,
-          "Open the Swipe Hire app, tap \"Join a team\" and enter this code:",
+          "Open the GlideRecruit app, tap \"Join a team\" and enter this code:",
           token,
           "The invite is valid for 7 days.",
         ].join("\n"),

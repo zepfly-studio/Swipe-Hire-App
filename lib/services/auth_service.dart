@@ -139,7 +139,7 @@ class AuthService {
   }
 
   /// "Continue with Google": signs into Firebase with Google, then trades
-  /// that ID token for a normal SwipeHire session. Returns null if the
+  /// that ID token for a normal GlideRecruit session. Returns null if the
   /// person closed the Google window. Throws [GoogleSignInNeedsRole] for a
   /// first-time account until [role] is given.
   Future<AppUser?> signInWithGoogle({UserRole? role}) async {

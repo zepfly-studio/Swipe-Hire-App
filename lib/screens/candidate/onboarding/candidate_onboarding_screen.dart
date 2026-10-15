@@ -531,7 +531,7 @@ class _CandidateOnboardingScreenState extends State<CandidateOnboardingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Swipe Hire',
+                  'GlideRecruit',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,

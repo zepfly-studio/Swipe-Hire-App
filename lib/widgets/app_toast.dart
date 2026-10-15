@@ -35,7 +35,7 @@ ToastKind toastKindForType(String? type) => switch (type) {
       _ => ToastKind.info,
     };
 
-/// Every in-app notification in SwipeHire goes through here: form feedback
+/// Every in-app notification in GlideRecruit goes through here: form feedback
 /// ("Profile saved"), errors, and the notifications that arrive while the
 /// app is open (a new task, an interview, a chat message). It draws one
 /// consistent card on top of [sonner_toast]'s stacking, swipe-to-dismiss and

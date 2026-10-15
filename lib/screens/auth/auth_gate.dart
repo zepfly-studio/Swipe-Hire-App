@@ -142,7 +142,7 @@ class _ConnectionProblemScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'We could not reach Swipe Hire',
+                  'We could not reach GlideRecruit',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),

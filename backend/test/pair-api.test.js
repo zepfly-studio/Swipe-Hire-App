@@ -352,7 +352,7 @@ describe("interviews", () => {
     assert.equal(await stageOf(swipe.id), "interview");
 
     const stored = await prisma.interview.findUnique({ where: { id: created.json.id } });
-    assert.match(stored.meetingLink, /^https:\/\/meet\.jit\.si\/SwipeHire-[0-9a-f]{12}$/);
+    assert.match(stored.meetingLink, /^https:\/\/meet\.jit\.si\/GlideRecruit-[0-9a-f]{12}$/);
     assert.equal(stored.durationMins, 45);
     assert.equal(stored.mode, "video");
     assert.equal(stored.status, "proposed");
@@ -445,7 +445,7 @@ describe("interviews", () => {
       const item = list.json.interviews.find((i) => i.id === id);
       assert.equal(item.status, "confirmed");
       assert.equal(item.chosenSlot, offered[1]);
-      assert.match(item.meetingLink, /^https:\/\/meet\.jit\.si\/SwipeHire-/);
+      assert.match(item.meetingLink, /^https:\/\/meet\.jit\.si\/GlideRecruit-/);
     }
 
     await h.idle();

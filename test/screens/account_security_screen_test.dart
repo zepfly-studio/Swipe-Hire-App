@@ -117,7 +117,7 @@ void main() {
 
       await tester.tap(find.text('Log out of all devices'));
       await tester.pumpAndSettle();
-      expect(find.text('Log out of Swipe Hire on all devices, including this one?'), findsOneWidget);
+      expect(find.text('Log out of GlideRecruit on all devices, including this one?'), findsOneWidget);
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();

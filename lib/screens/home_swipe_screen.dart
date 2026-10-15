@@ -227,7 +227,7 @@ class _HomeSwipeScreenState extends State<HomeSwipeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('SwipeHire', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800)),
+                Text('GlideRecruit', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800)),
                 Text('Recruiter', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
               ],
             ),

@@ -1,6 +1,6 @@
 {
-    "name": "SwipeHire",
-    "short_name": "SwipeHire",
+    "name": "GlideRecruit",
+    "short_name": "GlideRecruit",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#F0F0EE",

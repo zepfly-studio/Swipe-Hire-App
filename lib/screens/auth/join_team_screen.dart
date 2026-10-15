@@ -150,7 +150,7 @@ class _JoinTeamScreenState extends State<JoinTeamScreen> {
         Image.asset('assets/images/logo_mark.png', width: 88, filterQuality: FilterQuality.high),
         const SizedBox(height: 10),
         const Text(
-          'Swipe Hire',
+          'GlideRecruit',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.4, color: AppColors.primary),
         ),
       ],

@@ -166,9 +166,9 @@ async function sendEmailCode(company, email) {
     try {
       await mailer.sendNotificationEmail({
         to: email,
-        subject: `${code} is your Swipe Hire code`,
+        subject: `${code} is your GlideRecruit code`,
         heading: "Verify your company email",
-        body: `Your Swipe Hire verification code is ${code}\nIt expires in 10 minutes. If you did not ask for this, you can ignore this email.`,
+        body: `Your GlideRecruit verification code is ${code}\nIt expires in 10 minutes. If you did not ask for this, you can ignore this email.`,
       });
     } catch (err) {
       // Resend's shared test sender only delivers to the account owner.

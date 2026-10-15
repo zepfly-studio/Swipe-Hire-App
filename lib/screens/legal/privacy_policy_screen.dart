@@ -15,7 +15,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
       sections: [
         LegalSection(
           '1. Who we are',
-          'Swipe Hire ("we", "us", "the App") is operated by [COMPANY_LEGAL_NAME]. '
+          'GlideRecruit ("we", "us", "the App") is operated by [COMPANY_LEGAL_NAME]. '
               'This policy explains what personal data we collect from you, why, '
               'and what rights you have over it, in line with India\'s Digital '
               'Personal Data Protection Act, 2023 (DPDP Act).',

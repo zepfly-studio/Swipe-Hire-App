@@ -15,7 +15,7 @@ class TermsOfServiceScreen extends StatelessWidget {
       sections: [
         LegalSection(
           '1. Acceptance',
-          'By creating an account on Swipe Hire ("the App"), operated by '
+          'By creating an account on GlideRecruit ("the App"), operated by '
               '[COMPANY_LEGAL_NAME], you agree to these Terms and to our '
               'Privacy Policy. If you do not agree, do not use the App.',
         ),

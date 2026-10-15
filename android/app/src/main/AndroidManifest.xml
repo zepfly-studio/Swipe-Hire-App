@@ -6,7 +6,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
     <application
-        android:label="Swipe Hire"
+        android:label="GlideRecruit"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

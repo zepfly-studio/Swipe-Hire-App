@@ -1,4 +1,4 @@
-/// The two account types SwipeHire supports. A [recruiter] is the company
+/// The two account types GlideRecruit supports. A [recruiter] is the company
 /// or person doing the hiring (today's swipe/shortlist experience); a
 /// [candidate] is the job seeker being discovered.
 enum UserRole { recruiter, candidate }
@@ -28,7 +28,7 @@ class AppUser {
   /// Whether important updates are also emailed.
   final bool emailNotifications;
 
-  /// Swipe Hire staff (the email is in the server's ADMIN_EMAILS list).
+  /// GlideRecruit staff (the email is in the server's ADMIN_EMAILS list).
   final bool isAdmin;
 
   /// A recruiter who owns the company. False for a team member who joined

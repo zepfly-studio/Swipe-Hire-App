@@ -1,5 +1,5 @@
 name: hiring_app
-description: "Swipe Hire: a two-sided hiring app. Recruiters swipe through candidates and run a hiring pipeline; candidates apply, complete tasks and track every step."
+description: "GlideRecruit: a two-sided hiring app. Recruiters swipe through candidates and run a hiring pipeline; candidates apply, complete tasks and track every step."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

@@ -33,7 +33,7 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
     return showDialog<UserRole>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('How will you use Swipe Hire?'),
+        title: const Text('How will you use GlideRecruit?'),
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.of(context).pop(UserRole.candidate),

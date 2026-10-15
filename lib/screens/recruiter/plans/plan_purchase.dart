@@ -24,7 +24,7 @@ class CheckoutRequest {
     required this.orderId,
     required this.amountPaise,
     this.currency = 'INR',
-    this.name = 'Swipe Hire',
+    this.name = 'GlideRecruit',
     this.description = '',
     this.email = '',
     this.contact = '',

@@ -100,7 +100,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Log out of all devices'),
-        content: const Text('Log out of Swipe Hire on all devices, including this one?'),
+        content: const Text('Log out of GlideRecruit on all devices, including this one?'),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
           TextButton(
@@ -189,7 +189,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
             const Divider(height: 1),
             const SizedBox(height: 20),
             const Text(
-              'Used Swipe Hire on a shared or lost device?',
+              'Used GlideRecruit on a shared or lost device?',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),

@@ -283,7 +283,7 @@ class _TeamScreenState extends State<TeamScreen> {
           Text('Share this code with $_shareEmail', style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           const Text(
-            'They open Swipe Hire, choose "Join a team" and enter it.',
+            'They open GlideRecruit, choose "Join a team" and enter it.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
           ),
           const SizedBox(height: 10),

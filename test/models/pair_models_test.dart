@@ -208,7 +208,7 @@ void main() {
         chosenSlot: DateTime.utc(2026, 10, 20, 9, 30),
         durationMins: 45,
         status: 'confirmed',
-        meetingLink: 'https://meet.jit.si/SwipeHire-abc',
+        meetingLink: 'https://meet.jit.si/GlideRecruit-abc',
         note: 'Bring portfolio',
       );
       final uri = interviewCalendarUri(i, title: 'Interview: Acme');
@@ -216,7 +216,7 @@ void main() {
       expect(uri.queryParameters['action'], 'TEMPLATE');
       expect(uri.queryParameters['text'], 'Interview: Acme');
       expect(uri.queryParameters['dates'], '20261020T093000Z/20261020T101500Z');
-      expect(uri.queryParameters['location'], 'https://meet.jit.si/SwipeHire-abc');
+      expect(uri.queryParameters['location'], 'https://meet.jit.si/GlideRecruit-abc');
     });
   });
 
