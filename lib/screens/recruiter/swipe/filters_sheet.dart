@@ -291,7 +291,7 @@ class _FiltersSheetState extends State<FiltersSheet> {
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
                                   )
                                 : const Text('Save'),
                           ),

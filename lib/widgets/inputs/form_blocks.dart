@@ -215,7 +215,7 @@ class _SelectableChip extends StatelessWidget {
                   const Icon(
                     Icons.check_rounded,
                     size: 15,
-                    color: Colors.white,
+                    color: AppColors.onPrimary,
                   ),
                   const SizedBox(width: 5),
                 ],
@@ -224,7 +224,7 @@ class _SelectableChip extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: selected ? Colors.white : AppColors.textPrimary,
+                    color: selected ? AppColors.onPrimary : AppColors.textPrimary,
                   ),
                 ),
               ],

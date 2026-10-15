@@ -207,7 +207,7 @@ class _ShortlistTile extends StatelessWidget {
           gradient: AppColors.accentGradient,
           borderRadius: BorderRadius.circular(18),
         ),
-        child: const Icon(Icons.undo_rounded, color: Colors.white),
+        child: const Icon(Icons.undo_rounded, color: AppColors.onPrimary),
       ),
       child: Container(
         padding: const EdgeInsets.all(12),

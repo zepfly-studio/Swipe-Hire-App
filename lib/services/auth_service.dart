@@ -216,6 +216,28 @@ class AuthService {
   /// [CandidateProfileService.save] has written the candidate's details.
   Future<void> markCandidateProfileComplete() => _updateProfile({'profileComplete': true});
 
+  /// Who a team invite code is for: {email, companyName}.
+  Future<Map<String, dynamic>> inviteInfo(String token) => _guard(() => _api.inviteInfo(token.trim()));
+
+  /// Joins a company as a recruiter with an invite code and signs in.
+  Future<AppUser> acceptInvite({required String token, required String name, required String password}) async {
+    final session = await _guard(() => _api.acceptInvite(token: token.trim(), name: name.trim(), password: password));
+    await _auth.signInWithCustomToken(session.firebaseToken);
+    return _profileFrom(session.user);
+  }
+
+  /// Changes the password; other devices are signed out. Throws [ApiException]
+  /// (its `body['field']` is `current` or `next`) so the form can mark the input.
+  Future<void> changePassword({required String current, required String next}) =>
+      _api.changePassword(current: current, next: next);
+
+  /// "Log out of all devices": the server kills every token, then this
+  /// device signs out too.
+  Future<void> logoutAllDevices() async {
+    await _api.logoutAll();
+    await signOut();
+  }
+
   Future<void> signOut() async {
     WishlistService.instance.clear();
     InAppNotifier.instance.stop();

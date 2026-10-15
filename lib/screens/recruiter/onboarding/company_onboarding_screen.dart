@@ -283,7 +283,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'SwipeHire',
+                  'Swipe Hire',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.primary),
                 ),
                 if (first.isNotEmpty)
@@ -394,7 +394,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                          child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.onPrimary),
                         )
                       : Text(label),
                 ),

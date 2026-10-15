@@ -14,6 +14,7 @@ import '../legal/terms_of_service_screen.dart';
 import 'auth_error.dart';
 import 'auth_text_field.dart';
 import 'google_sign_in_button.dart';
+import 'join_team_screen.dart';
 import 'otp_verify_screen.dart';
 import '../../widgets/app_toast.dart';
 
@@ -237,7 +238,7 @@ class _SignupScreenState extends State<SignupScreen> {
                                 ? const SizedBox(
                                     width: 22,
                                     height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                                    child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                                 : const Text('Create account'),
                           ),
                         ),
@@ -253,6 +254,16 @@ class _SignupScreenState extends State<SignupScreen> {
                               if (mounted) Navigator.of(context).pop();
                             },
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: _loading
+                              ? null
+                              : () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
+                                  ),
+                          child: const Text('Have a team invite? Join a team',
+                              style: TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ),

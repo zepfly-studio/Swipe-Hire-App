@@ -17,6 +17,8 @@ const paymentRoutes = require("./routes/payment");
 const chatRoutes = require("./routes/chats");
 const interviewRoutes = require("./routes/interviews");
 const taskRoutes = require("./routes/tasks");
+const { team: teamRoutes, auth: teamAuthRoutes } = require("./routes/team");
+const adminRoutes = require("./routes/admin");
 const { notifications: notificationRoutes, templates: templateRoutes } = require("./routes/inbox");
 
 // Builds the Express app without starting a listener, so the same app can
@@ -57,6 +59,7 @@ function createApp() {
   });
 
   app.use("/auth", authLimiter, authRoutes);
+  app.use("/auth", authLimiter, teamAuthRoutes);
   app.use("/users", apiLimiter, userRoutes);
   app.use("/candidates", apiLimiter, candidateRoutes);
   app.use("/jobs", apiLimiter, jobRoutes);
@@ -68,6 +71,8 @@ function createApp() {
   app.use("/chats", apiLimiter, chatRoutes);
   app.use("/interviews", apiLimiter, interviewRoutes);
   app.use("/tasks", apiLimiter, taskRoutes);
+  app.use("/team", apiLimiter, teamRoutes);
+  app.use("/admin", apiLimiter, adminRoutes);
   app.use("/taxonomy", apiLimiter, taxonomyRoutes);
   app.use("/notifications", apiLimiter, notificationRoutes);
   app.use("/templates", apiLimiter, templateRoutes);

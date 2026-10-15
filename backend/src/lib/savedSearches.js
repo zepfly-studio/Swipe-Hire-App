@@ -6,7 +6,7 @@
 // so two concurrent profile saves cannot both notify.
 
 const { prisma } = require("./prisma");
-const { notify } = require("./notify");
+const { notifyCompany } = require("./teamNotify");
 const { filtersMatch, filterConditions, cleanFilters } = require("./deck");
 
 const MAX_SEARCHES = 20;
@@ -62,7 +62,7 @@ async function evaluateAlertsForCandidate(candidateId, { assumeComplete = false 
     for (const search of searches) {
       if (!filtersMatch(search.filters, user.candidateProfile)) continue;
       if (!(await markNotified(search.id, candidateId))) continue;
-      await notify(search.recruiterId, {
+      await notifyCompany(search.recruiterId, {
         type: "alert",
         title: `New match for "${search.name}"`,
         body: "A new candidate matches your saved search.",

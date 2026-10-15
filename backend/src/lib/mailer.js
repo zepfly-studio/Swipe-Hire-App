@@ -11,7 +11,7 @@ function resend() {
 }
 
 function sender() {
-  const fromName = process.env.RESEND_FROM_NAME || "SwipeHire";
+  const fromName = process.env.RESEND_FROM_NAME || "Swipe Hire";
   return `${fromName} <${process.env.RESEND_FROM_EMAIL}>`;
 }
 
@@ -34,12 +34,12 @@ async function deliver(message) {
 
 const COPY = {
   signup: {
-    subject: "Your SwipeHire verification code",
-    intro: "Use this code to verify your email and finish creating your SwipeHire account:",
+    subject: "Your Swipe Hire verification code",
+    intro: "Use this code to verify your email and finish creating your Swipe Hire account:",
   },
   reset: {
-    subject: "Reset your SwipeHire password",
-    intro: "Use this code to reset your SwipeHire password:",
+    subject: "Reset your Swipe Hire password",
+    intro: "Use this code to reset your Swipe Hire password:",
   },
 };
 
@@ -55,7 +55,7 @@ async function sendOtpEmail({ to, otp, purpose }) {
     text: `${intro} ${otp}\n\nIt expires in 10 minutes. If you didn't request this, you can ignore this email.`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a1a">
-        <h2 style="margin:24px 0 8px">SwipeHire</h2>
+        <h2 style="margin:24px 0 8px">Swipe Hire</h2>
         <p>${intro}</p>
         <p style="font-size:32px;font-weight:700;letter-spacing:8px;margin:16px 0">${otp}</p>
         <p style="color:#666">It expires in 10 minutes. If you didn't request this, you can ignore this email.</p>
@@ -74,13 +74,13 @@ async function sendNotificationEmail({ to, subject, heading, body, attachments }
   await deliver({
     to,
     subject,
-    text: `${heading}\n\n${body}\n\nOpen SwipeHire to respond. You can turn these emails off in your profile.`,
+    text: `${heading}\n\n${body}\n\nOpen Swipe Hire to respond. You can turn these emails off in your profile.`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
         <h2 style="margin:24px 0 8px">${escapeHtml(heading)}</h2>
         ${paragraphs}
         <p style="color:#888;font-size:12px;margin-top:24px">
-          Open SwipeHire to respond. You can turn these emails off in your profile.
+          Open Swipe Hire to respond. You can turn these emails off in your profile.
         </p>
       </div>`,
     attachments,

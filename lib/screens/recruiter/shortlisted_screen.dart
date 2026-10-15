@@ -292,7 +292,7 @@ class _ShortlistedScreenState extends State<ShortlistedScreen> {
             selectedColor: AppColors.primary,
             backgroundColor: AppColors.surface,
             labelStyle: TextStyle(
-              color: selected ? Colors.white : AppColors.textPrimary,
+              color: selected ? AppColors.onPrimary : AppColors.textPrimary,
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),

@@ -311,7 +311,7 @@ class _ConversationTile extends StatelessWidget {
                       child: Text(
                         c.unread > 99 ? '99+' : '${c.unread}',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800),
+                        style: const TextStyle(color: AppColors.onPrimary, fontSize: 11.5, fontWeight: FontWeight.w800),
                       ),
                     )
                   else

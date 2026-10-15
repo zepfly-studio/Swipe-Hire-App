@@ -13,10 +13,10 @@ import '../messages/pair_nav.dart';
 import '../messages/pair_widgets.dart';
 
 Color taskStatusColor(String effectiveStatus) => switch (effectiveStatus) {
-      'submitted' => AppColors.like,
-      'overdue' => AppColors.reject,
-      'cancelled' => AppColors.textSecondary,
-      _ => AppColors.warning,
+      'submitted' => AppColors.taskSubmitted,
+      'overdue' => AppColors.taskOverdue,
+      'cancelled' => AppColors.taskCancelled,
+      _ => AppColors.taskWaiting,
     };
 
 /// A task, for both roles. [compact] drops the person header (used inside
@@ -379,7 +379,7 @@ class _TaskCardState extends State<TaskCard> {
               onPressed: _busy ? null : _submit,
               style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
               child: _busy
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
                   : Text(_t.submission != null ? 'Update submission' : 'Submit task'),
             ),
           ],

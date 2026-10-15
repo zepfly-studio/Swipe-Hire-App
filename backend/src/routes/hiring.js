@@ -39,7 +39,7 @@ async function tell(userId, event) {
 }
 
 async function companyNameFor(user) {
-  const company = await prisma.company.findUnique({ where: { ownerId: user.id }, select: { name: true } });
+  const company = await prisma.company.findUnique({ where: { ownerId: user.companyId }, select: { name: true } });
   return company?.name || user.company || "A company";
 }
 
@@ -56,8 +56,8 @@ router.post("/swipe", async (req, res) => {
 
   const company = await ensureCompany(req.user);
   const job = jobId
-    ? await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.id } })
-    : await defaultJob(req.user.id);
+    ? await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.companyId } })
+    : await defaultJob(req.user.companyId);
   if (!job) {
     return jobId
       ? res.status(404).json({ error: "Job not found." })
@@ -82,7 +82,7 @@ router.post("/swipe", async (req, res) => {
   }
 
   const duplicate = () => res.status(409).json({ error: "You have already swiped this candidate for this job" });
-  const key = { recruiterId_candidateId_jobPostingId: { recruiterId: req.user.id, candidateId, jobPostingId: job.id } };
+  const key = { recruiterId_candidateId_jobPostingId: { recruiterId: req.user.companyId, candidateId, jobPostingId: job.id } };
   if (await prisma.candidateSwipe.findUnique({ where: key, select: { id: true } })) return duplicate();
 
   // Credit and swipe row commit together or not at all, so a duplicate (lost
@@ -90,10 +90,10 @@ router.post("/swipe", async (req, res) => {
   let swipesLeft;
   try {
     swipesLeft = await prisma.$transaction(async (tx) => {
-      const left = await spendSwipe(tx, req.user.id);
+      const left = await spendSwipe(tx, req.user.companyId);
       if (left === null) throw new NoSwipes();
       await tx.candidateSwipe.create({
-        data: { recruiterId: req.user.id, candidateId, jobPostingId: job.id, action },
+        data: { recruiterId: req.user.companyId, candidateId, jobPostingId: job.id, action },
       });
       return left;
     });
@@ -121,7 +121,7 @@ router.post("/swipe", async (req, res) => {
 router.post("/swipe/undo", async (req, res) => {
   await ensureCompany(req.user);
   const swipe = await prisma.candidateSwipe.findFirst({
-    where: { recruiterId: req.user.id, createdAt: { gte: new Date(Date.now() - UNDO_WINDOW_MS) } },
+    where: { recruiterId: req.user.companyId, createdAt: { gte: new Date(Date.now() - UNDO_WINDOW_MS) } },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: { candidate: { include: CANDIDATE_INCLUDE }, jobPosting: true },
   });
@@ -131,9 +131,9 @@ router.post("/swipe/undo", async (req, res) => {
 
   if (swipe.action === "right") {
     if (swipe.stage !== "shortlisted") return contacted();
-    const pair = { companyId: req.user.id, candidateId: swipe.candidateId, createdAt: { gte: swipe.createdAt } };
+    const pair = { companyId: req.user.companyId, candidateId: swipe.candidateId, createdAt: { gte: swipe.createdAt } };
     const [messages, interviews, tasks] = await Promise.all([
-      prisma.chatMessage.count({ where: { ...pair, senderId: req.user.id } }),
+      prisma.chatMessage.count({ where: { ...pair, senderId: { not: swipe.candidateId } } }),
       prisma.interview.count({ where: pair }),
       prisma.hiringTask.count({ where: pair }),
     ]);
@@ -149,7 +149,7 @@ router.post("/swipe/undo", async (req, res) => {
         where: { id: swipe.id, ...(swipe.action === "right" ? { stage: "shortlisted" } : {}) },
       });
       if (removed.count !== 1) throw new NoSwipes();
-      return swipe.action === "left" ? refundSwipe(tx, req.user.id) : balanceOf(tx, req.user.id);
+      return swipe.action === "left" ? refundSwipe(tx, req.user.companyId) : balanceOf(tx, req.user.companyId);
     });
   } catch (err) {
     if (err instanceof NoSwipes) return contacted();
@@ -165,7 +165,7 @@ router.post("/swipe/undo", async (req, res) => {
     if (notification) await prisma.notification.deleteMany({ where: { id: notification.id } });
   }
 
-  const rel = await relationsFor(req.user.id, [swipe.candidateId]);
+  const rel = await relationsFor(req.user.companyId, [swipe.candidateId]);
   const card = buildCard(swipe.candidate, swipe.jobPosting, {
     wishlisted: rel.wishlisted.has(swipe.candidateId),
     contact: rel.shortlisted.has(swipe.candidateId),
@@ -182,14 +182,14 @@ router.put("/wishlist/:candidateId", async (req, res) => {
   const candidateId = req.params.candidateId;
 
   if (!wishlisted) {
-    await prisma.wishlistEntry.deleteMany({ where: { recruiterId: req.user.id, candidateId } });
+    await prisma.wishlistEntry.deleteMany({ where: { recruiterId: req.user.companyId, candidateId } });
     return res.json({ wishlisted: false });
   }
   const candidate = await prisma.user.findFirst({ where: { id: candidateId, role: "candidate" }, include: CANDIDATE_INCLUDE });
   if (!isLive(candidate)) return res.status(404).json({ error: "Candidate not found" });
   await prisma.wishlistEntry.upsert({
-    where: { recruiterId_candidateId: { recruiterId: req.user.id, candidateId } },
-    create: { recruiterId: req.user.id, candidateId },
+    where: { recruiterId_candidateId: { recruiterId: req.user.companyId, candidateId } },
+    create: { recruiterId: req.user.companyId, candidateId },
     update: {},
   });
   res.json({ wishlisted: true });
@@ -199,16 +199,16 @@ router.put("/wishlist/:candidateId", async (req, res) => {
 // against the oldest open job.
 router.get("/wishlist", async (req, res) => {
   const entries = await prisma.wishlistEntry.findMany({
-    where: { recruiterId: req.user.id },
+    where: { recruiterId: req.user.companyId },
     orderBy: [{ createdAt: "desc" }, { candidateId: "asc" }],
     include: { candidate: { include: CANDIDATE_INCLUDE } },
   });
   const job = await prisma.jobPosting.findFirst({
-    where: { recruiterId: req.user.id, isOpen: true },
+    where: { recruiterId: req.user.companyId, isOpen: true },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
   const live = entries.filter((e) => isLive(e.candidate));
-  const rel = await relationsFor(req.user.id, live.map((e) => e.candidateId));
+  const rel = await relationsFor(req.user.companyId, live.map((e) => e.candidateId));
   res.json({
     candidates: live.map((e) => buildCard(e.candidate, job, { wishlisted: true, contact: rel.shortlisted.has(e.candidateId) })),
   });
@@ -220,11 +220,11 @@ router.get("/wishlist", async (req, res) => {
 router.get("/shortlisted", async (req, res) => {
   const jobId = str(req.query.jobId, 100);
   const swipes = await prisma.candidateSwipe.findMany({
-    where: { recruiterId: req.user.id, action: "right", ...(jobId ? { jobPostingId: jobId } : {}) },
+    where: { recruiterId: req.user.companyId, action: "right", ...(jobId ? { jobPostingId: jobId } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: { candidate: { include: CANDIDATE_INCLUDE }, jobPosting: true },
   });
-  const rel = await relationsFor(req.user.id, [...new Set(swipes.map((s) => s.candidateId))]);
+  const rel = await relationsFor(req.user.companyId, [...new Set(swipes.map((s) => s.candidateId))]);
   res.json({
     candidates: swipes.map((s) => ({
       ...buildCard(s.candidate, s.jobPosting, { wishlisted: rel.wishlisted.has(s.candidateId), contact: true }),
@@ -250,7 +250,7 @@ router.patch("/pipeline/:swipeId", async (req, res) => {
   }
 
   const swipe = await prisma.candidateSwipe.findFirst({
-    where: { id: req.params.swipeId, recruiterId: req.user.id, action: "right" },
+    where: { id: req.params.swipeId, recruiterId: req.user.companyId, action: "right" },
     include: { jobPosting: { select: { title: true } } },
   });
   if (!swipe) return res.status(404).json({ error: "This candidate is not in your pipeline" });
@@ -275,7 +275,7 @@ router.patch("/pipeline/:swipeId", async (req, res) => {
       type: "hired",
       title: `Congratulations! ${name} selected you 🎉`,
       body: `${name} has selected you for ${swipe.jobPosting.title}.`,
-      link: `/messages?with=${req.user.id}`,
+      link: `/messages?with=${req.user.companyId}`,
       email: true,
     });
   }
@@ -286,7 +286,7 @@ router.patch("/pipeline/:swipeId", async (req, res) => {
 // --- saved searches --------------------------------------------------------
 
 router.get("/searches", async (req, res) => {
-  const rows = await prisma.savedSearch.findMany({ where: { recruiterId: req.user.id }, orderBy: { createdAt: "desc" } });
+  const rows = await prisma.savedSearch.findMany({ where: { recruiterId: req.user.companyId }, orderBy: { createdAt: "desc" } });
   res.json({ searches: rows.map(toSearch) });
 });
 
@@ -298,7 +298,7 @@ router.post("/searches", async (req, res) => {
   if (!hasAnyFilter(filters)) {
     return res.status(400).json({ error: "Set at least one filter before saving the search", field: "filters" });
   }
-  const count = await prisma.savedSearch.count({ where: { recruiterId: req.user.id } });
+  const count = await prisma.savedSearch.count({ where: { recruiterId: req.user.companyId } });
   if (count >= MAX_SEARCHES) {
     return res.status(400).json({ error: `You can save up to ${MAX_SEARCHES} searches. Delete one first.` });
   }
@@ -306,7 +306,7 @@ router.post("/searches", async (req, res) => {
   const already = await liveCandidateIdsMatching(filters);
   const row = await prisma.savedSearch.create({
     data: {
-      recruiterId: req.user.id,
+      recruiterId: req.user.companyId,
       name,
       filters,
       alerts: bool(req.body?.alerts, true),
@@ -325,14 +325,14 @@ router.patch("/searches/:id", async (req, res) => {
     if (!name) return res.status(400).json({ error: "Give this search a name", field: "name" });
     data.name = name;
   }
-  const result = await prisma.savedSearch.updateMany({ where: { id: req.params.id, recruiterId: req.user.id }, data });
+  const result = await prisma.savedSearch.updateMany({ where: { id: req.params.id, recruiterId: req.user.companyId }, data });
   if (result.count === 0) return res.status(404).json({ error: "Saved search not found" });
   const row = await prisma.savedSearch.findUnique({ where: { id: req.params.id } });
   res.json({ search: toSearch(row) });
 });
 
 router.delete("/searches/:id", async (req, res) => {
-  await prisma.savedSearch.deleteMany({ where: { id: req.params.id, recruiterId: req.user.id } });
+  await prisma.savedSearch.deleteMany({ where: { id: req.params.id, recruiterId: req.user.companyId } });
   res.json({ ok: true });
 });
 

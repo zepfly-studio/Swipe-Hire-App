@@ -531,7 +531,7 @@ class _CandidateOnboardingScreenState extends State<CandidateOnboardingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'SwipeHire',
+                  'Swipe Hire',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 17,
@@ -697,7 +697,7 @@ class _CandidateOnboardingScreenState extends State<CandidateOnboardingScreen> {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.4,
-                            color: Colors.white,
+                            color: AppColors.onPrimary,
                           ),
                         )
                       : Text(

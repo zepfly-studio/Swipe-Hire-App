@@ -27,15 +27,16 @@ String candidateStageLabel(String stage) => switch (stage) {
       _ => stage.isEmpty ? 'Shortlisted' : stage,
     };
 
-/// Pill colour per stage. Spec: grey, sky, violet, amber, green, red; the
-/// app palette has no violet, so "task" uses the brand accent.
+/// Pill colour per stage (tokens live in [AppColors]): shortlisted grey,
+/// contacted sky, task sent muted teal-green, interview amber, hired green,
+/// rejected red.
 Color stageColor(String stage) => switch (stage) {
-      'contacted' => AppColors.info,
-      'task' => AppColors.accent,
-      'interview' => AppColors.warning,
-      'hired' => AppColors.like,
-      'rejected' || 'closed' => AppColors.reject,
-      _ => AppColors.textSecondary,
+      'contacted' => AppColors.stageContacted,
+      'task' => AppColors.stageTask,
+      'interview' => AppColors.stageInterview,
+      'hired' => AppColors.stageHired,
+      'rejected' || 'closed' => AppColors.stageRejected,
+      _ => AppColors.stageShortlisted,
     };
 
 /// Counts per stage plus `'all'`, for the stage tabs. An unknown stage is

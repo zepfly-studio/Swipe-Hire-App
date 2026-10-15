@@ -136,7 +136,7 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                             gradient: AppColors.accentGradient,
                             borderRadius: BorderRadius.circular(22),
                           ),
-                          child: const Icon(Icons.mark_email_read_outlined, color: Colors.white, size: 36),
+                          child: const Icon(Icons.mark_email_read_outlined, color: AppColors.onPrimary, size: 36),
                         ),
                         const SizedBox(height: 18),
                         const Text(
@@ -188,7 +188,7 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
                               ? const SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                               : const Text('Verify & create account'),
                         ),
                         const SizedBox(height: 16),

@@ -1,5 +1,5 @@
 name: hiring_app
-description: "SwipeHire: a two-sided hiring app. Recruiters swipe through candidates and run a hiring pipeline; candidates apply, complete tasks and track every step."
+description: "Swipe Hire: a two-sided hiring app. Recruiters swipe through candidates and run a hiring pipeline; candidates apply, complete tasks and track every step."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -83,12 +83,12 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  image_path: "assets/icon/icon.png"
-  adaptive_icon_background: "#1F4D42"
-  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
   web:
     generate: true
-    image_path: "assets/icon/icon.png"
+    image_path: "assets/icon/app_icon.png"
     background_color: "#F0F0EE"
     theme_color: "#1F4D42"
 

@@ -10,6 +10,7 @@ import '../../widgets/fade_in_up.dart';
 import 'auth_error.dart';
 import 'auth_text_field.dart';
 import 'google_sign_in_button.dart';
+import 'join_team_screen.dart';
 import 'reset_password_screen.dart';
 import 'signup_screen.dart';
 import '../../widgets/app_toast.dart';
@@ -148,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? const SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                                child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                             : const Text('Log In'),
                       ),
                     ),
@@ -178,6 +179,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    TextButton(
+                      onPressed: _loading
+                          ? null
+                          : () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const JoinTeamScreen()),
+                              ),
+                      child: const Text('Have a team invite? Join a team',
+                          style: TextStyle(color: AppColors.accentAlt, fontWeight: FontWeight.w600)),
+                    ),
                   ],
                 ),
               ),
@@ -191,11 +202,21 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildLogo() {
     return Column(
       children: [
-        Image.asset('assets/images/logo_full.png', width: 280, filterQuality: FilterQuality.high),
-        const SizedBox(height: 18),
+        Image.asset('assets/images/logo_mark.png', width: 104, filterQuality: FilterQuality.high),
+        const SizedBox(height: 10),
+        const Text(
+          'Swipe Hire',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 16),
         const Text('Welcome back', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        const Text('Log in to SwipeHire', style: TextStyle(color: AppColors.textSecondary)),
+        const Text('Log in to Swipe Hire', style: TextStyle(color: AppColors.textSecondary)),
       ],
     );
   }

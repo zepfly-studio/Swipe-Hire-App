@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../models/pair/notification_link.dart';
 import '../../utils/app_nav.dart';
+import '../recruiter/team/team_screen.dart';
+import '../recruiter/verify/verify_company_screen.dart';
 import '../tasks/tasks_screen.dart';
 
 /// Cross-tab navigation for the pair features (chat / interviews / tasks),
@@ -54,8 +56,15 @@ class PairNav {
     _toShell(context);
   }
 
+  /// Opens a company-only [page] over the shell (back goes to the shell).
+  static void _openCompanyPage(BuildContext context, Widget page) {
+    final nav = Navigator.of(context);
+    nav.popUntil((r) => r.isFirst);
+    nav.push(MaterialPageRoute<void>(builder: (_) => page));
+  }
+
   /// Routes a notification [target]. Returns false when there is nothing to
-  /// open (unknown link, or `/company/verify` which is ignored for now).
+  /// open (unknown link, or a company-only link for a candidate).
   static bool openTarget(BuildContext context, NotificationTarget target, {required bool isCompany}) {
     switch (target.kind) {
       case NotificationTargetKind.messages:
@@ -89,6 +98,13 @@ class PairNav {
         openSwipe(context);
         return true;
       case NotificationTargetKind.verify:
+        if (!isCompany) return false;
+        _openCompanyPage(context, const VerifyCompanyScreen());
+        return true;
+      case NotificationTargetKind.team:
+        if (!isCompany) return false;
+        _openCompanyPage(context, const TeamScreen());
+        return true;
       case NotificationTargetKind.unknown:
         return false;
     }

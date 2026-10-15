@@ -360,9 +360,9 @@ class _ChatThreadViewState extends State<ChatThreadView> {
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
                         )
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      : const Icon(Icons.send_rounded, color: AppColors.onPrimary, size: 20),
                 ),
               ],
             ),
@@ -400,8 +400,8 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final mine = message.mine;
     final maxWidth = MediaQuery.of(context).size.width * 0.8;
-    final textColor = mine ? Colors.white : AppColors.textPrimary;
-    final metaColor = mine ? Colors.white70 : AppColors.textSecondary;
+    final textColor = mine ? AppColors.onPrimary : AppColors.textPrimary;
+    final metaColor = mine ? AppColors.onPrimaryMuted : AppColors.textSecondary;
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(

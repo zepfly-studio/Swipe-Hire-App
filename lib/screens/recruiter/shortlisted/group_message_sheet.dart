@@ -91,7 +91,7 @@ class _GroupMessageSheetState extends State<GroupMessageSheet> {
         onPressed: _sending ? null : _send,
         style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
         child: _sending
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
             : Text('Send to $n candidate${n == 1 ? '' : 's'}'),
       ),
       child: Column(

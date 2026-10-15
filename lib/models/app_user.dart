@@ -28,6 +28,16 @@ class AppUser {
   /// Whether important updates are also emailed.
   final bool emailNotifications;
 
+  /// Swipe Hire staff (the email is in the server's ADMIN_EMAILS list).
+  final bool isAdmin;
+
+  /// A recruiter who owns the company. False for a team member who joined
+  /// through an invite (they cannot invite people or rename the company).
+  final bool isOwner;
+
+  /// The hiring account the recruiter works under: the owner's user id.
+  final String companyId;
+
   const AppUser({
     required this.uid,
     required this.email,
@@ -38,6 +48,9 @@ class AppUser {
     this.phone = '',
     this.profileComplete = false,
     this.emailNotifications = true,
+    this.isAdmin = false,
+    this.isOwner = true,
+    this.companyId = '',
   });
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) {
@@ -51,6 +64,9 @@ class AppUser {
       phone: map['phone'] ?? '',
       profileComplete: map['profileComplete'] ?? false,
       emailNotifications: map['emailNotifications'] ?? true,
+      isAdmin: map['isAdmin'] == true,
+      isOwner: map['isOwner'] != false,
+      companyId: (map['companyId'] ?? '').toString(),
     );
   }
 
@@ -64,6 +80,9 @@ class AppUser {
       'phone': phone,
       'profileComplete': profileComplete,
       'emailNotifications': emailNotifications,
+      'isAdmin': isAdmin,
+      'isOwner': isOwner,
+      'companyId': companyId,
     };
   }
 }

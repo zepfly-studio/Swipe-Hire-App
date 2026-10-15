@@ -76,7 +76,7 @@ class CandidateCardFace extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black38],
+                colors: [Colors.transparent, AppColors.scrimLight],
               ),
             ),
           ),
@@ -250,13 +250,7 @@ class InitialsAvatar extends StatelessWidget {
   final String name;
   const InitialsAvatar({super.key, required this.name});
 
-  static const List<List<Color>> _palettes = [
-    [AppColors.accent, AppColors.accentAlt],
-    [Color(0xFF3F7F6D), Color(0xFF6FA593)],
-    [Color(0xFF10B981), AppColors.like],
-    [AppColors.info, AppColors.accent],
-    [Color(0xFF8DB5A6), AppColors.accentAlt],
-  ];
+  static const List<List<Color>> _palettes = AppColors.avatarPalettes;
 
   String get _initials {
     final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
@@ -287,7 +281,7 @@ class InitialsAvatar extends StatelessWidget {
           return Text(
             _initials,
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.onPrimary,
               fontSize: size * 0.42,
               fontWeight: FontWeight.w800,
             ),
@@ -307,7 +301,7 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: AppColors.onPrimary.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -331,7 +325,7 @@ class _MatchBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
+        color: AppColors.onPrimary.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -361,23 +355,20 @@ class _GreetingNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: -0.045,
-      child: Text.rich(
-        TextSpan(
-          children: [
-            const TextSpan(text: 'Hey! I\'m\n'),
-            TextSpan(text: firstName),
-          ],
-        ),
-        textAlign: TextAlign.right,
-        style: GoogleFonts.caveat(
-          color: Colors.white,
-          fontSize: 30,
-          fontWeight: FontWeight.w700,
-          height: 1.05,
-          shadows: const [Shadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 1))],
-        ),
+    return Text.rich(
+      TextSpan(
+        children: [
+          const TextSpan(text: 'Hey! I\'m\n'),
+          TextSpan(text: firstName),
+        ],
+      ),
+      textAlign: TextAlign.right,
+      style: GoogleFonts.plusJakartaSans(
+        color: AppColors.onPrimary,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        height: 1.15,
+        shadows: const [Shadow(color: AppColors.scrimMedium, blurRadius: 6, offset: Offset(0, 1))],
       ),
     );
   }
@@ -399,15 +390,15 @@ class _WatchIntroBubble extends StatelessWidget {
             height: 52,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.4),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
+              color: AppColors.scrim.withValues(alpha: 0.4),
+              border: Border.all(color: AppColors.onPrimary.withValues(alpha: 0.5), width: 1.5),
             ),
-            child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
+            child: const Icon(Icons.play_arrow_rounded, color: AppColors.onPrimary, size: 28),
           ),
           const SizedBox(height: 4),
           const Text(
             'Watch Intro',
-            style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black45, blurRadius: 4)]),
+            style: TextStyle(color: AppColors.onPrimary, fontSize: 10.5, fontWeight: FontWeight.w700, shadows: [Shadow(color: AppColors.scrimMedium, blurRadius: 4)]),
           ),
         ],
       ),
@@ -529,18 +520,16 @@ class _WishlistButtonState extends State<_WishlistButton> {
           decoration: BoxDecoration(
             gradient: AppColors.likeGradient,
             borderRadius: BorderRadius.circular(26),
-            boxShadow: [
-              BoxShadow(color: AppColors.like.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 5)),
-            ],
+            boxShadow: AppColors.cardShadow(opacity: 2),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.favorite_rounded, color: Colors.white, size: 14),
+              Icon(Icons.favorite_rounded, color: AppColors.onPrimary, size: 14),
               SizedBox(width: 6),
               Text(
                 'Wishlist',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                style: TextStyle(color: AppColors.onPrimary, fontWeight: FontWeight.w700, fontSize: 12),
               ),
             ],
           ),

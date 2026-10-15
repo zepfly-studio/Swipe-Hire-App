@@ -176,8 +176,8 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: _sending
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
+                    : const Icon(Icons.send_rounded, color: AppColors.onPrimary, size: 18),
               ),
             ),
           ),
@@ -213,7 +213,7 @@ class _MessageBubble extends StatelessWidget {
         ),
         child: Text(
           message.text,
-          style: TextStyle(color: isMine ? Colors.white : AppColors.textPrimary, fontSize: 14),
+          style: TextStyle(color: isMine ? AppColors.onPrimary : AppColors.textPrimary, fontSize: 14),
         ),
       ),
     );

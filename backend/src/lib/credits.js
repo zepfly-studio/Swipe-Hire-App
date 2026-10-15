@@ -9,15 +9,17 @@ const FREE_SWIPES = 5;
 /**
  * The recruiter's Company row, created on first need so recruiters who signed
  * up before companies existed (or skipped onboarding) can still swipe.
- * `user` is the signed-in recruiter (id, company, name).
+ * `user` is the signed-in recruiter (id, companyId, company, name).
  */
 async function ensureCompany(user) {
-  const existing = await prisma.company.findUnique({ where: { ownerId: user.id } });
+  // A team member shares the owner's company (and credits).
+  const ownerId = user.companyId || user.companyOwnerId || user.id;
+  const existing = await prisma.company.findUnique({ where: { ownerId } });
   if (existing) return existing;
   const name = String(user.company || user.name || "My company").trim().slice(0, 150) || "My company";
   return prisma.company.upsert({
-    where: { ownerId: user.id },
-    create: { ownerId: user.id, name, swipesLeft: FREE_SWIPES },
+    where: { ownerId },
+    create: { ownerId, name, swipesLeft: FREE_SWIPES },
     update: {},
   });
 }

@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/candidate_card_face.dart';
 import '../../widgets/fade_in_up.dart';
+import '../account/account_security_screen.dart';
 import '../auth/account_actions.dart';
 import 'onboarding/candidate_onboarding_screen.dart';
 import '../../utils/profile_strength.dart';
@@ -223,6 +224,17 @@ class CandidateProfileScreen extends StatelessWidget {
                 ? AppColors.accentAlt
                 : AppColors.like,
             onTap: () => _viewIntroVideo(context),
+          ),
+        ),
+        FadeInUp(
+          delay: const Duration(milliseconds: 280),
+          child: _DetailTile(
+            icon: Icons.lock_outline_rounded,
+            label: 'Account security',
+            value: 'Change password, log out of all devices',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
+            ),
           ),
         ),
         FadeInUp(

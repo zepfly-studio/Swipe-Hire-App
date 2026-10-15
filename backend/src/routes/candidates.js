@@ -8,6 +8,7 @@ const { toCandidateProfile, toJobPosting } = require("../lib/serializers");
 const { FieldError, parseProfileBody, parsePreferencesBody } = require("../lib/candidateProfile");
 const { parseResumePdf } = require("../lib/resumeParser");
 const { ensureCompany } = require("../lib/credits");
+const { companyOwner } = require("../lib/teamNotify");
 const { evaluateAlertsForCandidate } = require("../lib/savedSearches");
 const deckLib = require("../lib/deck");
 
@@ -125,14 +126,15 @@ async function jobStats(jobId) {
 // `sort=newest` skips all ranking.
 router.get("/", requireRole("recruiter"), async (req, res) => {
   const company = await ensureCompany(req.user);
+  const owner = await companyOwner(req.user);
 
   const jobId = str(req.query.jobId, 100);
   let job;
   if (jobId) {
-    job = await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.id } });
+    job = await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.companyId } });
     if (!job) return res.status(404).json({ error: "Job not found." });
   } else {
-    job = await deckLib.defaultJob(req.user.id);
+    job = await deckLib.defaultJob(req.user.companyId);
     if (!job) return res.status(403).json({ code: "NO_JOB", error: "Please add a job you are hiring for first" });
   }
   if (!job.isOpen) return res.status(409).json({ error: PAUSED_MESSAGE });
@@ -141,11 +143,11 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
   const requested = Math.min(Math.max(int(req.query.limit, DEFAULT_PAGE), 1), MAX_PAGE);
   const limit = Math.min(requested, company.swipesLeft - exclude.length);
   const companyProfile = await prisma.company.findUnique({
-    where: { ownerId: req.user.id },
+    where: { ownerId: req.user.companyId },
     select: { id: true, name: true, logoUrl: true, verificationStatus: true },
   });
   const jobJson = toJobPosting(
-    { ...job, recruiter: { name: req.user.name, company: req.user.company, companyProfile } },
+    { ...job, recruiter: { name: owner.name, company: owner.company, companyProfile } },
     { stats: await jobStats(job.id) },
   );
   const respond = (cards, nextCursor, hasMore) =>
@@ -153,12 +155,12 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
 
   if (limit <= 0) return respond([], null, false);
 
-  const where = await deckWhere({ query: req.query, recruiterId: req.user.id, job, exclude });
+  const where = await deckWhere({ query: req.query, recruiterId: req.user.companyId, job, exclude });
   const cursor = str(req.query.cursor, 200);
 
   // Cards carry the "wishlisted" flag and `contact` for people already shortlisted.
   const toCards = async (users) => {
-    const rel = await deckLib.relationsFor(req.user.id, users.map((u) => u.id));
+    const rel = await deckLib.relationsFor(req.user.companyId, users.map((u) => u.id));
     return users.map((u) =>
       deckLib.buildCard(u, job, { wishlisted: rel.wishlisted.has(u.id), contact: rel.shortlisted.has(u.id) }),
     );
@@ -377,12 +379,12 @@ router.get("/:id", requireRole("recruiter"), async (req, res) => {
   if (!user) return res.status(404).json({ error: "Candidate not found." });
   const jobId = str(req.query.jobId, 100);
   const job = jobId
-    ? await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.id } })
+    ? await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.companyId } })
     : await prisma.jobPosting.findFirst({
-        where: { recruiterId: req.user.id, isOpen: true },
+        where: { recruiterId: req.user.companyId, isOpen: true },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
-  const rel = await deckLib.relationsFor(req.user.id, [user.id]);
+  const rel = await deckLib.relationsFor(req.user.companyId, [user.id]);
   res.json(deckLib.buildCard(user, job, { wishlisted: rel.wishlisted.has(user.id), contact: rel.shortlisted.has(user.id) }));
 });
 

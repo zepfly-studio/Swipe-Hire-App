@@ -132,7 +132,8 @@ async function hasRightSwipe(companyId, candidateId, jobId) {
  */
 async function companyContacted(companyId, candidateId) {
   const [message, interview, task] = await Promise.all([
-    prisma.chatMessage.findFirst({ where: { companyId, candidateId, senderId: companyId }, select: { id: true } }),
+    // Any teammate's message counts: the sender is anyone but the candidate.
+    prisma.chatMessage.findFirst({ where: { companyId, candidateId, senderId: { not: candidateId } }, select: { id: true } }),
     prisma.interview.findFirst({ where: { companyId, candidateId }, select: { id: true } }),
     prisma.hiringTask.findFirst({ where: { companyId, candidateId }, select: { id: true } }),
   ]);
@@ -170,14 +171,26 @@ async function latestSwipedJob(companyId, candidateId) {
 
 // ------------------------------------------------------------ shapes --
 
-function toChatMessage(row, viewerId) {
-  return {
+/**
+ * @param viewerId      the signed-in user
+ * @param opts.company  true for the company side of the thread: every
+ *                      teammate's message is `mine`, and one sent by somebody
+ *                      else on the team carries `by` (their first name).
+ * @param opts.names    Map(userId -> full name) for resolving `by`
+ */
+function toChatMessage(row, viewerId, { company = false, names = null } = {}) {
+  const item = {
     id: row.id,
     text: row.text,
-    mine: row.senderId === viewerId,
+    mine: company ? row.senderId !== row.candidateId : row.senderId === viewerId,
     at: iso(row.createdAt),
     read: row.readAt != null,
   };
+  if (company && row.senderId !== row.candidateId && row.senderId !== viewerId) {
+    const by = firstName(names ? names.get(row.senderId) : "");
+    if (by) item.by = by;
+  }
+  return item;
 }
 
 /**

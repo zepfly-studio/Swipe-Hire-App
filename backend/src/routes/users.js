@@ -1,7 +1,9 @@
 const express = require("express");
 const { prisma } = require("../lib/prisma");
 const { deleteFirebaseUser } = require("../lib/firebase");
+const bcrypt = require("bcryptjs");
 const { requireAuth } = require("../middleware/requireAuth");
+const { signToken, MIN_PASSWORD_LENGTH } = require("./auth");
 const { str, bool, requireRole } = require("../lib/validate");
 const {
   toProfile,
@@ -26,6 +28,9 @@ router.patch("/me", async (req, res) => {
   for (const field of ["name", "company", "designation", "phone"]) {
     if (typeof req.body?.[field] === "string") data[field] = str(req.body[field], 200);
   }
+  // The company name belongs to the hiring account (see PUT /company/me); a
+  // team member's own account does not get to change it.
+  if (req.user.role === "recruiter" && !req.user.isOwner) delete data.company;
   if (data.phone && !/^\+?\d{10,13}$/.test(data.phone.replace(/[\s\-()]/g, ""))) {
     return res.status(400).json({ error: "Enter a valid phone number (10 digits)." });
   }
@@ -41,6 +46,30 @@ router.patch("/me", async (req, res) => {
 
   const user = await prisma.user.update({ where: { id: req.user.id }, data });
   res.json(toProfile(user));
+});
+
+// PUT /users/me/password { current, next } -> { ok:true, token }
+// Bumps tokenVersion, so every other device is signed out; this one keeps
+// working with the fresh `token` in the response.
+router.put("/me/password", async (req, res) => {
+  const current = typeof req.body?.current === "string" ? req.body.current : "";
+  const next = typeof req.body?.next === "string" ? req.body.next : "";
+
+  if (next.length < MIN_PASSWORD_LENGTH || next.length > 200) {
+    return res
+      .status(400)
+      .json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters`, field: "next" });
+  }
+  if (!(await bcrypt.compare(current, req.user.passwordHash))) {
+    return res.status(400).json({ error: "Your current password is not correct", field: "current" });
+  }
+
+  const passwordHash = await bcrypt.hash(next, 10);
+  const user = await prisma.user.update({
+    where: { id: req.user.id },
+    data: { passwordHash, tokenVersion: { increment: 1 } },
+  });
+  res.json({ ok: true, token: signToken(user) });
 });
 
 // PUT /users/me/fcm-token { token } -- device registration for push.
@@ -82,7 +111,8 @@ router.get("/me/export", async (req, res) => {
       orderBy: { updatedAt: "desc" },
     });
     out.pipeline = opportunities.map(toOpportunity);
-    const postings = await prisma.jobPosting.findMany({ where: { recruiterId: uid }, include: POSTING_INCLUDE });
+    // Postings belong to the hiring account (the owner's id for a team member).
+    const postings = await prisma.jobPosting.findMany({ where: { recruiterId: req.user.companyId }, include: POSTING_INCLUDE });
     out.jobPostings = postings.map(toJobPosting);
     const swipes = await prisma.swipe.findMany({ where: { recruiterId: uid } });
     out.swipes = swipes.map((s) => ({ candidateUid: s.candidateId, state: s.state, at: s.updatedAt.toISOString() }));

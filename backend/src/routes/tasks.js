@@ -2,6 +2,7 @@ const express = require("express");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middleware/requireAuth");
 const { notify, inBackground } = require("../lib/notify");
+const { notifyCompany } = require("../lib/teamNotify");
 const {
   loadParties,
   companyName,
@@ -64,7 +65,7 @@ function parseDeadline(raw, now = Date.now()) {
 }
 
 async function companyDisplayName(user) {
-  const profile = await prisma.company.findUnique({ where: { ownerId: user.id }, select: { name: true } });
+  const profile = await prisma.company.findUnique({ where: { ownerId: user.companyId || user.id }, select: { name: true } });
   return companyName({ ...user, companyProfile: profile });
 }
 
@@ -75,7 +76,7 @@ router.get("/", async (req, res) => {
     viewerIsCompany && typeof req.query.candidateId === "string" && req.query.candidateId ? { candidateId: req.query.candidateId } : {};
   const rows = await prisma.hiringTask.findMany({
     where: viewerIsCompany
-      ? { companyId: req.user.id, ...candidateFilter }
+      ? { companyId: req.user.companyId, ...candidateFilter }
       : { candidateId: req.user.id, status: { not: "cancelled" } },
     include: INCLUDE,
     orderBy: { createdAt: "desc" },
@@ -117,17 +118,17 @@ router.post("/", onlyCompany, async (req, res) => {
 
   const jobId = typeof body.jobId === "string" && body.jobId.trim() ? body.jobId.trim() : "";
   if (jobId) {
-    if (!(await hasRightSwipe(req.user.id, candidateId, jobId))) {
+    if (!(await hasRightSwipe(req.user.companyId, candidateId, jobId))) {
       return fail(res, 403, "This candidate is not shortlisted for that job");
     }
-  } else if (!(await hasRightSwipe(req.user.id, candidateId))) {
+  } else if (!(await hasRightSwipe(req.user.companyId, candidateId))) {
     return fail(res, 403, "Shortlist this candidate before sending a task");
   }
 
-  const job = jobId ? { id: jobId } : await latestSwipedJob(req.user.id, candidateId);
+  const job = jobId ? { id: jobId } : await latestSwipedJob(req.user.companyId, candidateId);
   const task = await prisma.hiringTask.create({
     data: {
-      companyId: req.user.id,
+      companyId: req.user.companyId,
       candidateId,
       jobPostingId: job?.id || null,
       createdById: req.user.id,
@@ -138,7 +139,7 @@ router.post("/", onlyCompany, async (req, res) => {
     },
   });
 
-  await moveStage({ companyId: req.user.id, candidateId, jobId: jobId || null, to: "task", from: ["shortlisted", "contacted"] });
+  await moveStage({ companyId: req.user.companyId, candidateId, jobId: jobId || null, to: "task", from: ["shortlisted", "contacted"] });
 
   const company = await companyDisplayName(req.user);
   inBackground(
@@ -195,7 +196,7 @@ router.post("/:id/submit", onlyCandidate, async (req, res) => {
 
   const updated = task.submittedAt != null;
   inBackground(
-    notify(task.companyId, {
+    notifyCompany(task.companyId, {
       title: `${req.user.name} ${updated ? "updated their submission" : "submitted a task"}`,
       body: `"${task.title}" was ${updated ? "updated" : "submitted"}.${liveUrl ? `\nLive: ${liveUrl}` : ""}${repoUrl ? `\nRepo: ${repoUrl}` : ""}`,
       type: "task",
@@ -209,7 +210,7 @@ router.post("/:id/submit", onlyCandidate, async (req, res) => {
 
 // PATCH /tasks/:id { dueAt } -> { ok }
 router.patch("/:id", onlyCompany, async (req, res) => {
-  const task = await prisma.hiringTask.findFirst({ where: { id: req.params.id, companyId: req.user.id } });
+  const task = await prisma.hiringTask.findFirst({ where: { id: req.params.id, companyId: req.user.companyId } });
   if (!task) return fail(res, 404, "Task not found");
   if (task.status === "cancelled") return fail(res, 409, "This task was cancelled");
 
@@ -239,7 +240,7 @@ router.patch("/:id", onlyCompany, async (req, res) => {
 
 // POST /tasks/:id/cancel -> { ok }   (idempotent; the candidate is told without an email)
 router.post("/:id/cancel", onlyCompany, async (req, res) => {
-  const task = await prisma.hiringTask.findFirst({ where: { id: req.params.id, companyId: req.user.id } });
+  const task = await prisma.hiringTask.findFirst({ where: { id: req.params.id, companyId: req.user.companyId } });
   if (!task) return fail(res, 404, "Task not found");
   if (task.status === "cancelled") return res.json({ ok: true });
 

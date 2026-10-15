@@ -219,7 +219,7 @@ class _ToastCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: color.withValues(alpha: 0.35)),
             boxShadow: [
-              BoxShadow(color: const Color(0xFF15151F).withValues(alpha: 0.12), blurRadius: 22, offset: const Offset(0, 8)),
+              BoxShadow(color: AppColors.textPrimary.withValues(alpha: 0.12), blurRadius: 22, offset: const Offset(0, 8)),
             ],
           ),
           child: Row(

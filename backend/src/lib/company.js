@@ -29,8 +29,26 @@ function domainFromEmail(email) {
   return at === -1 ? "" : String(email).slice(at + 1).toLowerCase().trim();
 }
 
+// Provider names that are free mail on any country domain (yahoo.com,
+// yahoo.co.in, hotmail.co.uk ...).
+const FREE_MAIL_NAMES = new Set([
+  "gmail", "googlemail", "yahoo", "ymail", "hotmail", "outlook", "live", "msn", "rediffmail", "icloud",
+  "me", "aol", "proton", "protonmail", "zoho", "gmx", "yandex",
+]);
+const SECOND_LEVEL = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
+
+// The name part of a registrable domain: "acme" for mail.acme.co.in.
+function registrableName(domain) {
+  const parts = String(domain || "").toLowerCase().split(".").filter(Boolean);
+  if (parts.length <= 1) return parts[0] || "";
+  const tld = parts[parts.length - 1];
+  if (parts.length >= 3 && tld.length === 2 && SECOND_LEVEL.has(parts[parts.length - 2])) return parts[parts.length - 3];
+  return parts[parts.length - 2];
+}
+
 function isFreeMail(domain) {
-  return FREE_MAIL_DOMAINS.has(domain);
+  const d = String(domain || "").toLowerCase();
+  return FREE_MAIL_DOMAINS.has(d) || FREE_MAIL_NAMES.has(registrableName(d));
 }
 
 // A website on the same domain, or a subdomain of the email's domain

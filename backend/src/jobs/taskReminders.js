@@ -14,6 +14,7 @@
 
 const { prisma } = require("../lib/prisma");
 const { notify } = require("../lib/notify");
+const { notifyCompany } = require("../lib/teamNotify");
 const { formatWhen, companyName } = require("../lib/pairSerializers");
 
 const HOUR = 60 * 60 * 1000;
@@ -107,7 +108,7 @@ async function runReviewReminders(now = new Date()) {
     if (claimed.count !== 1) continue;
 
     const name = task.opportunity.candidate?.name || "A candidate";
-    await notify(task.opportunity.recruiterId, {
+    await notifyCompany(task.opportunity.recruiterId, {
       title: "Submission waiting for review",
       body: `${name} submitted "${task.title}" over a day ago. Review it to keep them moving.`,
       type: "review_reminder",
@@ -154,7 +155,7 @@ async function runInterviewReminders(now = new Date()) {
       type: "interview_reminder",
       opportunityId: o.id,
     });
-    await notify(o.recruiterId, {
+    await notifyCompany(o.recruiterId, {
       title: "Interview reminder",
       body: `Your interview with ${o.candidate?.name || "the candidate"} for ${role} ${lead}: ${when}.`,
       type: "interview_reminder",
@@ -242,7 +243,7 @@ async function runPairInterviewReminders(now = new Date()) {
       type: "interview",
       link: "/interviews",
     });
-    await notify(row.companyId, {
+    await notifyCompany(row.companyId, {
       title: "Interview reminder",
       body: `Your interview with ${row.candidate?.name || "the candidate"} for ${role} ${lead}: ${when}.`,
       type: "interview",

@@ -1,3 +1,4 @@
+const { isAdminUser } = require("./admin");
 // JSON shapes the Flutter models (lib/models/*.dart) parse with fromMap().
 // Dates go out as ISO-8601 strings; names/companies are joined from users so
 // a rename shows up everywhere without denormalised copies to keep in sync.
@@ -18,6 +19,11 @@ function toProfile(user) {
     profileComplete: user.profileComplete,
     emailVerified: user.emailVerified,
     emailNotifications: user.emailNotifications,
+    // Team + admin (phase 4). companyId is the hiring account's id: the owner
+    // for a team member, the recruiter's own id otherwise.
+    isAdmin: isAdminUser(user),
+    isOwner: user.role === "recruiter" && !user.companyOwnerId,
+    companyId: user.role === "recruiter" ? user.companyOwnerId || user.id : "",
   };
 }
 
@@ -109,6 +115,8 @@ function toCompany(c, { own = false } = {}) {
     address: c.address ?? "",
     linkedin: c.linkedin ?? "",
     foundedYear: c.foundedYear ?? null,
+    // Raw value: unverified | pending | verified | rejected. `verified` is
+    // true only for "verified" (what candidates see as the badge).
     verificationStatus: c.verificationStatus,
     verified: c.verificationStatus === "verified",
     verifiedAt: iso(c.verifiedAt),
@@ -116,6 +124,9 @@ function toCompany(c, { own = false } = {}) {
   if (!own) return base;
   return {
     ...base,
+    // "email" | "gst" | "" and the GSTIN last submitted: the owner's view only.
+    verificationMethod: c.verificationMethod || (c.verificationStatus === "verified" && c.verificationNote === "domain" ? "email" : ""),
+    gstin: c.gstin ?? "",
     phone: c.phone ?? "",
     contactEmail: c.contactEmail ?? "",
     swipesLeft: c.swipesLeft ?? 0,

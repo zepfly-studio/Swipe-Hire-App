@@ -38,7 +38,7 @@ router.post("/order", requireRole("recruiter"), async (req, res) => {
   if (payments.razorpayEnabled()) {
     mode = "razorpay";
     try {
-      orderId = await payments.createRazorpayOrder({ plan, recruiterId: req.user.id });
+      orderId = await payments.createRazorpayOrder({ plan, recruiterId: req.user.companyId });
     } catch (err) {
       console.error("[payment] could not create the Razorpay order:", err.message);
       return res.status(502).json({ error: "Could not start the payment. Please try again." });
@@ -53,7 +53,7 @@ router.post("/order", requireRole("recruiter"), async (req, res) => {
   await ensureCompany(req.user);
   await prisma.payment.create({
     data: {
-      recruiterId: req.user.id,
+      recruiterId: req.user.companyId,
       planId: plan.id,
       amountRupees: plan.price,
       swipes: plan.swipes,
@@ -79,7 +79,7 @@ router.post("/verify", requireRole("recruiter"), async (req, res) => {
   if (!orderId) return res.status(400).json({ error: "Payment verification failed" });
 
   const payment = await prisma.payment.findUnique({ where: { orderId } });
-  if (!payment || payment.recruiterId !== req.user.id) return res.status(404).json({ error: "Order not found" });
+  if (!payment || payment.recruiterId !== req.user.companyId) return res.status(404).json({ error: "Order not found" });
 
   let paymentId = "";
   if (payment.mode === "razorpay") {

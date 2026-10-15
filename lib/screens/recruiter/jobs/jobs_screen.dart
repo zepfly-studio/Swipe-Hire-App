@@ -245,7 +245,7 @@ class JobCard extends StatelessWidget {
                     gradient: AppColors.accentGradient,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.work_outline_rounded, color: Colors.white, size: 22),
+                  child: const Icon(Icons.work_outline_rounded, color: AppColors.onPrimary, size: 22),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

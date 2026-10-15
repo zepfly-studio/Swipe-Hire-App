@@ -61,8 +61,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset('assets/images/logo_full.png', width: 320, filterQuality: FilterQuality.high),
-                  const SizedBox(height: 10),
+                  Image.asset('assets/images/logo_mark.png', width: 148, filterQuality: FilterQuality.high),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Swipe Hire',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   const Text(
                     'Swipe. Shortlist. Hire.',
                     style: TextStyle(color: AppColors.textSecondary, fontSize: 13),

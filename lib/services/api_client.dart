@@ -319,5 +319,36 @@ class ApiClient {
 
   Future<void> deleteMe() => _request('DELETE', '/users/me', auth: true);
 
+  /// Public: who an invite code is for ({email, companyName}).
+  Future<Map<String, dynamic>> inviteInfo(String token) =>
+      _request('GET', '/auth/invite/${Uri.encodeComponent(token)}');
+
+  /// Joins a company's team with the code from the owner's invite. Creates
+  /// the recruiter account and starts a session, like [signUp].
+  Future<ApiSession> acceptInvite({required String token, required String name, required String password}) async {
+    final res = await _request('POST', '/auth/accept-invite', body: {'token': token, 'name': name, 'password': password});
+    await _saveToken(res['token'] as String);
+    return _session(res);
+  }
+
+  /// Changes the password. The server signs every OTHER device out and
+  /// returns a fresh token for this one, which is stored here. A wrong
+  /// current password is a 400 (field `current`), not a session expiry.
+  Future<void> changePassword({required String current, required String next}) async {
+    final res = await _request(
+      'PUT',
+      '/users/me/password',
+      body: {'current': current, 'next': next},
+      auth: true,
+      signOutOn401: false,
+    );
+    final fresh = res['token'];
+    if (fresh is String && fresh.isNotEmpty) await _saveToken(fresh);
+  }
+
+  /// Signs this account out of every device (the server invalidates all
+  /// tokens). The caller then clears the local session.
+  Future<void> logoutAll() => _request('POST', '/auth/logout-all', body: const {}, auth: true, signOutOn401: false);
+
   Future<void> signOut() => _clearToken();
 }

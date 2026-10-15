@@ -297,7 +297,7 @@ class _JobFormSheetState extends State<JobFormSheet> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                        child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.onPrimary),
                       )
                     : Text(_edit ? 'Save changes' : 'Post job'),
               ),

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/hiring_company.dart';
 import '../../services/api_client.dart';
 import '../../services/cloudinary_service.dart';
-import '../../services/company_service.dart';
+import '../../services/account_flags.dart';
 import '../../services/error_reporter.dart';
 import '../../services/hiring_service.dart';
 import '../../services/recruiter_profile_service.dart';
@@ -17,6 +17,7 @@ import '../../widgets/inputs/location_field.dart';
 import 'company_profile_form.dart';
 import 'onboarding/company_onboarding_form.dart' show kCompanySizes, kIndustries, canonicalCompanySize;
 import 'onboarding/company_onboarding_screen.dart';
+import 'verify/verify_company_screen.dart';
 
 /// The company profile (spec C7): logo, about, contact and links, with an
 /// "unsaved changes" bar. Candidates you shortlist see these details.
@@ -46,16 +47,29 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
   bool _saving = false;
   bool _uploading = false;
 
+  /// Only the account owner may rename the company or change its website.
+  /// Unknown (not loaded yet) counts as owner; the server enforces the rule.
+  bool get _isOwner => AccountFlagsService.forCurrentUser()?.isOwner ?? true;
+
+  static const String _ownerOnlyHint = 'Only the account owner can change this';
+
+  void _onFlags() {
+    if (mounted) setState(() {});
+  }
+
   List<TextEditingController> get _all => [_name, _founded, _about, _website, _linkedin, _phone, _email, _city, _address];
 
   @override
   void initState() {
     super.initState();
+    AccountFlagsService.current.addListener(_onFlags);
+    if (AccountFlagsService.forCurrentUser() == null) AccountFlagsService.refresh();
     _load();
   }
 
   @override
   void dispose() {
+    AccountFlagsService.current.removeListener(_onFlags);
     for (final c in _all) {
       c.dispose();
     }
@@ -242,41 +256,6 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
     }
   }
 
-  Future<void> _requestReview() async {
-    final controller = TextEditingController();
-    final note = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Request a review'),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'How can we confirm this is your company? (e.g. registration number, LinkedIn page)',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Send request'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (note == null || !mounted) return;
-    try {
-      await CompanyService.instance.requestVerification(note: note);
-      if (!mounted) return;
-      await _load();
-      AppToast.info('Request sent', description: 'We will review it and update the badge.');
-    } on ApiException catch (e) {
-      if (mounted) AppToast.error('Could not send the request', description: e.message);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final dirty = !_loading && _dirty;
@@ -328,13 +307,17 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                           label: 'Company name',
                           required: true,
                           error: _errors['name'],
+                          hint: _isOwner ? null : _ownerOnlyHint,
                           child: TextField(
                             controller: _name,
+                            readOnly: !_isOwner,
                             maxLength: 100,
                             textCapitalization: TextCapitalization.words,
+                            style: _isOwner ? null : const TextStyle(color: AppColors.textSecondary),
                             decoration: fieldDecoration(
                               hasError: _errors.containsKey('name'),
                               prefix: const Icon(Icons.apartment_rounded, size: 20),
+                              suffix: _isOwner ? null : const Icon(Icons.lock_outline_rounded, size: 18),
                             ),
                             onChanged: (_) => setState(() => _errors.remove('name')),
                           ),
@@ -375,7 +358,10 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                         const SizedBox(height: 14),
                         const _SectionTitle('Contact & links'),
                         _text('Website', _website, 'website',
-                            hint: 'yourcompany.com', keyboard: TextInputType.url, icon: Icons.language_rounded),
+                            hint: 'yourcompany.com',
+                            keyboard: TextInputType.url,
+                            icon: Icons.language_rounded,
+                            readOnly: !_isOwner),
                         const SizedBox(height: 14),
                         _text('LinkedIn page', _linkedin, 'linkedin',
                             hint: 'linkedin.com/company/…', keyboard: TextInputType.url, icon: Icons.link_rounded),
@@ -427,17 +413,17 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                               const Expanded(
                                 child: Text(
                                   'You have unsaved changes',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                  style: TextStyle(color: AppColors.onPrimary, fontWeight: FontWeight.w600),
                                 ),
                               ),
                               TextButton(
                                 onPressed: _saving ? null : _discard,
-                                child: const Text('Discard', style: TextStyle(color: Colors.white70)),
+                                child: const Text('Discard', style: TextStyle(color: AppColors.onPrimaryMuted)),
                               ),
                               FilledButton(
                                 onPressed: _saving ? null : _save,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: Colors.white,
+                                  backgroundColor: AppColors.onPrimary,
                                   foregroundColor: AppColors.textPrimary,
                                   minimumSize: const Size(0, 40),
                                 ),
@@ -468,33 +454,71 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
     String? helper,
     TextInputType? keyboard,
     IconData? icon,
+    bool readOnly = false,
   }) {
     return FormFieldBlock(
       label: label,
       error: _errors[field],
-      hint: helper,
+      hint: readOnly ? _ownerOnlyHint : helper,
       child: TextField(
         controller: controller,
         keyboardType: keyboard,
+        readOnly: readOnly,
+        style: readOnly ? const TextStyle(color: AppColors.textSecondary) : null,
         decoration: fieldDecoration(
           hintText: hint,
           hasError: _errors.containsKey(field),
           prefix: icon == null ? null : Icon(icon, size: 20),
+          suffix: readOnly ? const Icon(Icons.lock_outline_rounded, size: 18) : null,
         ),
         onChanged: (_) => setState(() => _errors.remove(field)),
       ),
     );
   }
 
+  Future<void> _openVerify() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => const VerifyCompanyScreen()));
+    // The verify screen refreshed the shared company; keep unsaved edits.
+    final latest = HiringService.company.value;
+    if (mounted && latest != null) setState(() => _company = latest);
+  }
+
   Widget _verificationCard() {
     final c = _company;
     if (c == null) return const SizedBox.shrink();
-    final (color, icon, title, text) = c.verified
-        ? (AppColors.info, Icons.verified_rounded, 'Verified company', 'Candidates see a verified badge next to ${c.name}.')
-        : c.isPending
-            ? (AppColors.warning, Icons.hourglass_top_rounded, 'Review requested', 'We are reviewing your request. The badge appears once it is approved.')
-            : (AppColors.textSecondary, Icons.shield_outlined, 'Not verified yet', 'Ask for a manual review to get the verified badge.');
+    final status = c.verified ? 'verified' : c.verificationStatus;
+    final (color, icon, title, text, action) = switch (status) {
+      'verified' => (
+          AppColors.info,
+          Icons.verified_rounded,
+          'Verified company',
+          'Candidates see a verified badge next to ${c.name}.',
+          'View details',
+        ),
+      'pending' => (
+          AppColors.warning,
+          Icons.hourglass_top_rounded,
+          'Verification under review',
+          'We are reviewing your GSTIN. The badge appears once it is approved.',
+          'View status',
+        ),
+      'rejected' => (
+          AppColors.reject,
+          Icons.error_outline_rounded,
+          'Verification was not approved',
+          'We could not verify your GSTIN. Check it, or verify with your work email instead.',
+          'Try again',
+        ),
+      _ => (
+          AppColors.textSecondary,
+          Icons.shield_outlined,
+          'Not verified yet',
+          'Verify with your work email in a minute, or send your GSTIN for review.',
+          'Get verified',
+        ),
+    };
     return Container(
+      key: const Key('verification-card'),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -508,19 +532,17 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
             children: [
               Icon(icon, color: color, size: 20),
               const SizedBox(width: 8),
-              Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w800)),
+              Expanded(child: Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w800))),
             ],
           ),
           const SizedBox(height: 6),
           Text(text, style: const TextStyle(fontSize: 13, height: 1.4, color: AppColors.textSecondary)),
-          if (!c.verified && !c.isPending) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: _requestReview,
-              icon: const Icon(Icons.rate_review_outlined, size: 16),
-              label: const Text('Request a review'),
-            ),
-          ],
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _openVerify,
+            icon: const Icon(Icons.chevron_right_rounded, size: 18),
+            label: Text(action),
+          ),
         ],
       ),
     );

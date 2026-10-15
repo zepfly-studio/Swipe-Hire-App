@@ -298,7 +298,7 @@ class _AssignTaskScreenState extends State<AssignTaskScreen> {
                           child: FilledButton.icon(
                             onPressed: _sending ? null : _send,
                             icon: _sending
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                                 : const Icon(Icons.send_rounded, size: 18),
                             label: const Text('Send task to candidate'),
                             style: FilledButton.styleFrom(

@@ -7,6 +7,8 @@ const { str, strList, requireRole } = require("../lib/validate");
 const { normalizeSkills } = require("../lib/derive");
 const { FieldError } = require("../lib/candidateProfile");
 const { toCompany, toJobPosting, POSTING_INCLUDE } = require("../lib/serializers");
+const verification = require("../lib/companyVerification");
+const { Prisma } = require("@prisma/client");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -82,21 +84,37 @@ function parseCompanyFields(b, prefix = "") {
   return data;
 }
 
-// Verification follows the website: a manual approval sticks, a pending
-// request stays pending, otherwise the status is whatever the domain says.
-function verificationData(existing, website, ownerEmail) {
-  const automatic = automaticVerification({ website, ownerEmail });
-  let status = automatic;
-  let note = existing?.verificationNote ?? "";
-  if (existing?.verificationStatus === "verified" && note === "manual") status = "verified";
-  else if (automatic !== "verified" && existing?.verificationStatus === "pending") status = "pending";
-  if (status === "verified" && note !== "manual") note = "domain";
-  return {
+// Verification status after a save by the OWNER. Renaming the company or
+// changing its website resets verified/pending/rejected to unverified; after
+// that (or on a new company) the domain check can verify it straight away.
+// Otherwise the status is left alone: a manual/GST approval sticks, a pending
+// request stays pending, a rejection stays rejected.
+// `next` is the name and website the company has after this save.
+function verificationData(existing, next, ownerEmail) {
+  const automatic = automaticVerification({ website: next.website, ownerEmail });
+  const changed = Boolean(existing) && (existing.name !== next.name || (existing.website || "") !== (next.website || ""));
+  const base = existing && !changed ? existing : null;
+
+  let status = base?.verificationStatus || "unverified";
+  let method = base?.verificationMethod ?? "";
+  let note = base?.verificationNote ?? "";
+  if (status !== "verified" && automatic === "verified") {
+    status = "verified";
+    method = "email";
+    note = "domain";
+  }
+  const data = {
     verificationStatus: status,
-    verificationNote: status === "verified" ? note : existing?.verificationNote === "manual" ? "" : note,
-    verifiedAt: status === "verified" ? existing?.verifiedAt ?? new Date() : null,
+    verificationMethod: status === "unverified" ? "" : method,
+    verificationNote: status === "unverified" ? "" : note,
+    verifiedAt: status === "verified" ? base?.verifiedAt ?? new Date() : null,
   };
+  // A code emailed for the old name/website is no longer valid.
+  if (changed) data.verificationOtp = Prisma.DbNull;
+  return data;
 }
+
+const OWNER_ONLY = "Only the account owner can change the company name or website";
 
 function sendFieldError(res, err) {
   return res.status(400).json({ error: err.message, field: err.field });
@@ -104,7 +122,7 @@ function sendFieldError(res, err) {
 
 // GET /company/me (recruiter) -> { company | null, suggestedName }
 router.get("/me", requireRole("recruiter"), async (req, res) => {
-  const company = await prisma.company.findUnique({ where: { ownerId: req.user.id } });
+  const company = await prisma.company.findUnique({ where: { ownerId: req.user.companyId } });
   res.json({ company: company ? toCompany(company, { own: true }) : null, suggestedName: req.user.company });
 });
 
@@ -122,19 +140,36 @@ router.put("/me", requireRole("recruiter"), async (req, res) => {
     throw err;
   }
 
-  const existing = await prisma.company.findUnique({ where: { ownerId: req.user.id } });
+  const companyId = req.user.companyId;
+  const existing = await prisma.company.findUnique({ where: { ownerId: companyId } });
+
+  // Team members edit the shared profile, except the identity of the company.
+  if (!req.user.isOwner) {
+    if (!existing) return res.status(409).json({ error: "The account owner has not set up the company yet." });
+    const renamed = fields.name !== undefined && fields.name !== existing.name;
+    const rewebbed = fields.website !== undefined && fields.website !== (existing.website || "");
+    if (renamed || rewebbed) return res.status(403).json({ error: OWNER_ONLY });
+    const company = await prisma.company.update({ where: { id: existing.id }, data: fields });
+    return res.json({ company: toCompany(company, { own: true }) });
+  }
+
   if (!existing && !fields.name) return res.status(400).json({ error: "Enter the company name.", field: "name" });
 
+  const name = fields.name ?? existing?.name ?? req.user.company ?? req.user.name;
   const website = fields.website !== undefined ? fields.website : existing?.website ?? "";
-  const data = { ...fields, ...verificationData(existing, website, req.user.email) };
+  const data = { ...fields, ...verificationData(existing, { name, website }, req.user.email) };
   const company = await prisma.company.upsert({
-    where: { ownerId: req.user.id },
-    create: { ownerId: req.user.id, ...data, name: fields.name ?? existing?.name ?? req.user.company ?? req.user.name },
+    where: { ownerId: companyId },
+    create: { ownerId: companyId, ...data, name },
     update: data,
   });
-  // The company name shown across the app comes from the account too.
+  // The company name shown across the app comes from the account too (the
+  // owner's and every teammate's).
   if (fields.name && req.user.company !== fields.name) {
-    await prisma.user.update({ where: { id: req.user.id }, data: { company: fields.name } });
+    await prisma.user.updateMany({
+      where: { OR: [{ id: companyId }, { companyOwnerId: companyId }] },
+      data: { company: fields.name },
+    });
   }
   res.json({ company: toCompany(company, { own: true }) });
 });
@@ -144,6 +179,8 @@ router.put("/me", requireRole("recruiter"), async (req, res) => {
 // the free swipes), creates the first job when the recruiter has none, and
 // marks the account complete.
 router.post("/onboarding", requireRole("recruiter"), async (req, res) => {
+  if (!req.user.isOwner) return res.status(403).json({ error: OWNER_ONLY });
+  const companyId = req.user.companyId;
   const body = req.body && typeof req.body === "object" ? req.body : {};
   const c = body.company && typeof body.company === "object" ? body.company : {};
   const j = body.job && typeof body.job === "object" ? body.job : {};
@@ -210,23 +247,23 @@ router.post("/onboarding", requireRole("recruiter"), async (req, res) => {
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.company.findUnique({ where: { ownerId: req.user.id } });
+    const existing = await tx.company.findUnique({ where: { ownerId: companyId } });
     const website = fields.website !== undefined ? fields.website : existing?.website ?? "";
-    const data = { ...fields, ...verificationData(existing, website, req.user.email) };
+    const data = { ...fields, ...verificationData(existing, { name: fields.name, website }, req.user.email) };
     const company = await tx.company.upsert({
-      where: { ownerId: req.user.id },
-      create: { ownerId: req.user.id, ...data },
+      where: { ownerId: companyId },
+      create: { ownerId: companyId, ...data },
       update: data,
     });
 
     let job = await tx.jobPosting.findFirst({
-      where: { recruiterId: req.user.id },
+      where: { recruiterId: companyId },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: POSTING_INCLUDE,
     });
     if (!job) {
       job = await tx.jobPosting.create({
-        data: { recruiterId: req.user.id, ...jobData, status: "open", isOpen: true },
+        data: { recruiterId: companyId, ...jobData, status: "open", isOpen: true },
         include: POSTING_INCLUDE,
       });
     }
@@ -245,7 +282,7 @@ router.post("/onboarding", requireRole("recruiter"), async (req, res) => {
 // POST /company/me/verification-request { note } -- asks for a manual review
 // when the website domain can't be matched to the recruiter's email.
 router.post("/me/verification-request", requireRole("recruiter"), async (req, res) => {
-  const company = await prisma.company.findUnique({ where: { ownerId: req.user.id } });
+  const company = await prisma.company.findUnique({ where: { ownerId: req.user.companyId } });
   if (!company) return res.status(409).json({ error: "Save your company details first." });
   if (company.verificationStatus === "verified") return res.json({ company: toCompany(company, { own: true }) });
 
@@ -260,6 +297,71 @@ router.post("/me/verification-request", requireRole("recruiter"), async (req, re
     type: "company",
   });
   res.json({ company: toCompany(updated, { own: true }) });
+});
+
+// ---------------------------------------------------------------------------
+// Company verification (phase 4). Any recruiter on the team may start it; the
+// work-email code goes to the caller's own login email.
+// ---------------------------------------------------------------------------
+
+async function ownCompany(req) {
+  return prisma.company.findUnique({ where: { ownerId: req.user.companyId } });
+}
+
+function sendError(res, error) {
+  const body = { error: error.message };
+  if (error.field) body.field = error.field;
+  return res.status(error.status).json(body);
+}
+
+// GET /company/verification -> { verification:{status,method,verifiedAt}, gstin, website, email }
+router.get("/verification", requireRole("recruiter"), async (req, res) => {
+  const company = await ownCompany(req);
+  res.json({
+    verification: company
+      ? verification.verificationView(company)
+      : { status: "none", method: "", verifiedAt: null },
+    gstin: company?.gstin ?? "",
+    website: company?.website ?? "",
+    email: req.user.email,
+  });
+});
+
+// POST /company/verification/gst { gstin } -> { verification:{status:'pending', method:'gst'} }
+router.post("/verification/gst", requireRole("recruiter"), async (req, res) => {
+  const gstin = verification.normalizeGstin(req.body?.gstin);
+  if (!verification.isValidGstin(gstin)) {
+    return res.status(400).json({ error: "Please enter a valid 15-character GSTIN", field: "gstin" });
+  }
+  const company = await ownCompany(req);
+  if (!company) return res.status(409).json({ error: "Save your company details first." });
+  if (company.verificationStatus === "verified") {
+    return res.status(409).json({ error: verification.MESSAGES.alreadyVerified });
+  }
+  await verification.requestGst(company, gstin);
+  console.log(`[company] GST verification requested for "${company.name}" (${company.id}) by ${req.user.email}`);
+  res.json({ verification: { status: "pending", method: "gst" } });
+});
+
+// POST /company/verification/email/send -> { sentTo, devCode? }
+router.post("/verification/email/send", requireRole("recruiter"), async (req, res) => {
+  const company = await ownCompany(req);
+  if (!company) return res.status(400).json({ error: verification.MESSAGES.noWebsite });
+  const result = await verification.sendEmailCode(company, req.user.email);
+  if (result.error) return sendError(res, result.error);
+  res.json(result);
+});
+
+// POST /company/verification/email/confirm { code } -> { verification:{status:'verified', method:'email', verifiedAt} }
+router.post("/verification/email/confirm", requireRole("recruiter"), async (req, res) => {
+  const before = await ownCompany(req);
+  if (!before) return res.status(400).json({ error: verification.MESSAGES.expired });
+  if (before.verificationStatus === "verified") return res.json({ verification: verification.verificationView(before) });
+
+  const result = await verification.confirmEmailCode(before.id, req.body?.code);
+  if (result.error) return sendError(res, result.error);
+  await verification.notifyTeam(before.ownerId, verification.VERIFIED_EVENT(result.company.name));
+  res.json({ verification: verification.verificationView(result.company) });
 });
 
 // GET /company/:id -- the public company page (any signed-in account); open

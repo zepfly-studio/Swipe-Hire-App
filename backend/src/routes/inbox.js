@@ -34,7 +34,7 @@ notifications.get("/summary", async (req, res) => {
       AND (
         (o."candidateId" = ${req.user.id} AND (o."candidateReadAt" IS NULL OR m."sentAt" > o."candidateReadAt"))
         OR
-        (o."recruiterId" = ${req.user.id} AND (o."recruiterReadAt" IS NULL OR m."sentAt" > o."recruiterReadAt"))
+        (o."recruiterId" = ${req.user.companyId} AND (o."recruiterReadAt" IS NULL OR m."sentAt" > o."recruiterReadAt"))
       )`;
   res.json({ unreadNotifications, unreadMessages: rows[0]?.n ?? 0 });
 });
@@ -55,7 +55,7 @@ templates.use(requireAuth, requireRole("recruiter"));
 // GET /templates -> { templates } the recruiter's saved tasks, newest first.
 templates.get("/", async (req, res) => {
   const rows = await prisma.taskTemplate.findMany({
-    where: { recruiterId: req.user.id },
+    where: { recruiterId: req.user.companyId },
     orderBy: { createdAt: "desc" },
     take: 50,
   });
@@ -70,7 +70,7 @@ templates.post("/", async (req, res) => {
   if (!title) return res.status(400).json({ error: "Give the template a title." });
   const row = await prisma.taskTemplate.create({
     data: {
-      recruiterId: req.user.id,
+      recruiterId: req.user.companyId,
       title,
       description: str(req.body?.description, 4000),
       link: str(req.body?.link, 1000),
@@ -81,7 +81,7 @@ templates.post("/", async (req, res) => {
 
 // DELETE /templates/:id
 templates.delete("/:id", async (req, res) => {
-  await prisma.taskTemplate.deleteMany({ where: { id: req.params.id, recruiterId: req.user.id } });
+  await prisma.taskTemplate.deleteMany({ where: { id: req.params.id, recruiterId: req.user.companyId } });
   res.json({ deleted: true });
 });
 

@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/hiring_company.dart';
+import '../services/account_flags.dart';
 import '../services/hiring_service.dart';
 import '../services/polling.dart';
 import '../services/recruiter_profile_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/app_nav.dart';
 import '../widgets/notification_bell.dart';
+import 'account/account_security_screen.dart';
+import 'admin/admin_screen.dart';
 import 'interviews/interviews_screen.dart';
 import 'messages/messages_screen.dart';
 import 'profile_screen.dart';
@@ -18,6 +21,8 @@ import 'recruiter/onboarding/company_onboarding_screen.dart';
 import 'recruiter/plans/plans_screen.dart';
 import 'recruiter/shortlisted_screen.dart';
 import 'recruiter/swipe/swipe_screen.dart';
+import 'recruiter/team/team_screen.dart';
+import 'recruiter/verify/verify_company_screen.dart';
 import 'recruiter/wishlist_screen.dart';
 import 'tasks/tasks_screen.dart';
 
@@ -53,6 +58,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     _unreadTimer = Timer.periodic(_unreadEvery, (_) => _pollUnread());
     _pollUnread();
     _loadCompany();
+    AccountFlagsService.refresh();
   }
 
   @override
@@ -141,11 +147,15 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
         }
 
         return SafeArea(
-          child: ValueListenableBuilder<HiringCompany?>(
-            valueListenable: HiringService.company,
-            builder: (context, company, _) {
+          child: ValueListenableBuilder<AccountFlags?>(
+            valueListenable: AccountFlagsService.current,
+            builder: (context, _, _) => ValueListenableBuilder<HiringCompany?>(
+              valueListenable: HiringService.company,
+              builder: (context, company, _) {
               final name = RecruiterProfileService.instance.name;
-              return Column(
+              final isAdmin = AccountFlagsService.forCurrentUser()?.isAdmin == true;
+              return SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ListTile(
@@ -184,6 +194,19 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                     onTap: () => go(const CompanyProfileScreen()),
                   ),
                   ListTile(
+                    leading: Icon(
+                      company?.verified == true ? Icons.verified_rounded : Icons.shield_outlined,
+                      color: company?.verified == true ? AppColors.info : null,
+                    ),
+                    title: Text(company?.verified == true ? 'Verified company' : 'Get verified badge'),
+                    onTap: () => go(const VerifyCompanyScreen()),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.group_outlined),
+                    title: const Text('Team'),
+                    onTap: () => go(const TeamScreen()),
+                  ),
+                  ListTile(
                     leading: const Icon(Icons.manage_accounts_outlined),
                     title: const Text('Account'),
                     onTap: () => go(
@@ -193,9 +216,22 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
+                  ListTile(
+                    leading: const Icon(Icons.lock_outline_rounded),
+                    title: const Text('Account security'),
+                    onTap: () => go(const AccountSecurityScreen()),
+                  ),
+                  if (isAdmin)
+                    ListTile(
+                      leading: const Icon(Icons.admin_panel_settings_outlined),
+                      title: const Text('Admin'),
+                      onTap: () => go(const AdminScreen()),
+                    ),
                 ],
+                ),
               );
             },
+            ),
           ),
         );
       },

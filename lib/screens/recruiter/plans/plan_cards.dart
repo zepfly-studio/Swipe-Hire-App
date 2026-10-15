@@ -234,7 +234,7 @@ class _PaidCard extends StatelessWidget {
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                      child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.onPrimary),
                     )
                   : Text('Buy ${plan.swipes} swipes'),
             ),

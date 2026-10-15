@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/pair/hiring_task.dart';
 import '../../services/api_client.dart';
 import '../../services/hiring_task_service.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/inputs/form_blocks.dart';
 import '../messages/pair_inputs.dart';
@@ -115,7 +116,7 @@ class _SendTaskSheetState extends State<SendTaskSheet> {
         onPressed: _sending ? null : _send,
         style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
         child: _sending
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary))
             : const Text('Send task'),
       ),
       child: Column(

@@ -84,7 +84,7 @@ class HiringApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SwipeHire',
+      title: 'Swipe Hire',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       builder: AppToastHost.builder,

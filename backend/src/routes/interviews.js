@@ -3,6 +3,7 @@ const express = require("express");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middleware/requireAuth");
 const { notify, inBackground } = require("../lib/notify");
+const { notifyCompany } = require("../lib/teamNotify");
 const { buildInterviewIcs } = require("../lib/ics");
 const {
   loadParties,
@@ -43,7 +44,7 @@ function fail(res, status, error, field) {
 }
 
 async function companyDisplayName(user) {
-  const profile = await prisma.company.findUnique({ where: { ownerId: user.id }, select: { name: true } });
+  const profile = await prisma.company.findUnique({ where: { ownerId: user.companyId || user.id }, select: { name: true } });
   return companyName({ ...user, companyProfile: profile });
 }
 
@@ -51,7 +52,7 @@ async function companyDisplayName(user) {
 router.get("/", async (req, res) => {
   const viewerIsCompany = isCompany(req.user);
   const rows = await prisma.interview.findMany({
-    where: viewerIsCompany ? { companyId: req.user.id } : { candidateId: req.user.id },
+    where: viewerIsCompany ? { companyId: req.user.companyId } : { candidateId: req.user.id },
     include: INCLUDE,
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -114,10 +115,10 @@ router.post("/", onlyCompany, async (req, res) => {
 
   const jobId = typeof body.jobId === "string" && body.jobId.trim() ? body.jobId.trim() : "";
   if (jobId) {
-    if (!(await hasRightSwipe(req.user.id, candidateId, jobId))) {
+    if (!(await hasRightSwipe(req.user.companyId, candidateId, jobId))) {
       return fail(res, 403, "This candidate is not shortlisted for that job");
     }
-  } else if (!(await hasRightSwipe(req.user.id, candidateId))) {
+  } else if (!(await hasRightSwipe(req.user.companyId, candidateId))) {
     return fail(res, 403, "Shortlist this candidate before scheduling an interview");
   }
 
@@ -125,7 +126,7 @@ router.post("/", onlyCompany, async (req, res) => {
   // already covers this pair.
   const existing = await prisma.interview.findFirst({
     where: {
-      companyId: req.user.id,
+      companyId: req.user.companyId,
       candidateId,
       OR: [{ status: "proposed" }, { status: "confirmed", chosenSlot: { gt: new Date() } }],
     },
@@ -133,10 +134,10 @@ router.post("/", onlyCompany, async (req, res) => {
   });
   if (existing) return fail(res, 409, "An interview with this candidate is already scheduled");
 
-  const job = jobId ? { id: jobId, title: "" } : await latestSwipedJob(req.user.id, candidateId);
+  const job = jobId ? { id: jobId, title: "" } : await latestSwipedJob(req.user.companyId, candidateId);
   const created = await prisma.interview.create({
     data: {
-      companyId: req.user.id,
+      companyId: req.user.companyId,
       candidateId,
       jobPostingId: job?.id || null,
       slots: unique.map((t) => new Date(t)),
@@ -149,7 +150,7 @@ router.post("/", onlyCompany, async (req, res) => {
     include: INCLUDE,
   });
 
-  await moveStage({ companyId: req.user.id, candidateId, jobId: jobId || null, to: "interview", from: null });
+  await moveStage({ companyId: req.user.companyId, candidateId, jobId: jobId || null, to: "interview", from: null });
 
   const company = await companyDisplayName(req.user);
   const jobTitle = created.jobPosting?.title || "";
@@ -224,7 +225,7 @@ router.post("/:id/accept", onlyCandidate, async (req, res) => {
   if (interview.meetingLink) lines.push(`Join: ${interview.meetingLink}`);
   else if (interview.location) lines.push(`Location: ${interview.location}`);
   inBackground(
-    notify(interview.companyId, {
+    notifyCompany(interview.companyId, {
       title: `${candidateName} confirmed the interview`,
       body: lines.join("\n"),
       type: "interview",
@@ -243,7 +244,7 @@ router.post("/:id/accept", onlyCandidate, async (req, res) => {
 router.post("/:id/cancel", async (req, res) => {
   const viewerIsCompany = isCompany(req.user);
   const interview = await prisma.interview.findFirst({
-    where: { id: req.params.id, ...(viewerIsCompany ? { companyId: req.user.id } : { candidateId: req.user.id }) },
+    where: { id: req.params.id, ...(viewerIsCompany ? { companyId: req.user.companyId } : { candidateId: req.user.id }) },
     include: INCLUDE,
   });
   if (!interview) return fail(res, 404, "Interview not found");
@@ -260,15 +261,15 @@ router.post("/:id/cancel", async (req, res) => {
 
   const otherId = viewerIsCompany ? interview.candidateId : interview.companyId;
   const actor = viewerIsCompany ? await companyDisplayName(req.user) : req.user.name;
-  inBackground(
-    notify(otherId, {
-      title: `${actor} cancelled the interview`,
-      body: reason || "You can agree on a new time in chat.",
-      type: "interview",
-      link: "/interviews",
-      email: { subject: `Interview cancelled by ${actor}` },
-    }),
-  );
+  const cancelEvent = {
+    title: `${actor} cancelled the interview`,
+    body: reason || "You can agree on a new time in chat.",
+    type: "interview",
+    link: "/interviews",
+    email: { subject: `Interview cancelled by ${actor}` },
+  };
+  // A candidate cancelling tells the whole company team.
+  inBackground(viewerIsCompany ? notify(otherId, cancelEvent) : notifyCompany(otherId, cancelEvent));
 
   res.json({ ok: true });
 });

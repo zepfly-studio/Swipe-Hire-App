@@ -32,7 +32,7 @@ class _ConfettiBurstState extends State<ConfettiBurst> with SingleTickerProvider
   void initState() {
     super.initState();
     final rnd = math.Random(7);
-    const colors = [AppColors.primary, AppColors.accent, AppColors.like, Color(0xFFF59E0B), AppColors.info];
+    const colors = [AppColors.primary, AppColors.accent, AppColors.like, AppColors.warning, AppColors.info];
     _particles = List.generate(widget.count, (i) {
       return _Particle(
         -math.pi / 2 + (rnd.nextDouble() - 0.5) * math.pi * 1.3,

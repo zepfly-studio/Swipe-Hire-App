@@ -430,7 +430,7 @@ class _TaskSubmitScreenState extends State<TaskSubmitScreen> {
             FilledButton.icon(
               onPressed: _sending ? null : _submit,
               icon: _sending
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                   : const Icon(Icons.check_rounded, size: 18),
               label: Text(_uploading ? 'Uploading file...' : (resubmitting ? 'Update submission' : 'Submit task')),
               style: FilledButton.styleFrom(

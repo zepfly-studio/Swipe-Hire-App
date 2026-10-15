@@ -230,7 +230,7 @@ class _ModeSwitch extends StatelessWidget {
                 Icon(
                   icon,
                   size: 17,
-                  color: selected ? Colors.white : AppColors.textPrimary,
+                  color: selected ? AppColors.onPrimary : AppColors.textPrimary,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -238,7 +238,7 @@ class _ModeSwitch extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13.5,
-                    color: selected ? Colors.white : AppColors.textPrimary,
+                    color: selected ? AppColors.onPrimary : AppColors.textPrimary,
                   ),
                 ),
               ],

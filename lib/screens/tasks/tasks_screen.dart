@@ -148,7 +148,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       backgroundColor: AppColors.surface,
                       showCheckmark: false,
                       labelStyle: TextStyle(
-                        color: _filter == f ? Colors.white : AppColors.textPrimary,
+                        color: _filter == f ? AppColors.onPrimary : AppColors.textPrimary,
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
                       ),

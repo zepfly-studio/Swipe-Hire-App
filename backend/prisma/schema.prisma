@@ -56,8 +56,19 @@ model User {
   /// Important updates (task assigned, interview scheduled, offer...) are
   /// also emailed unless the person turns this off.
   emailNotifications Boolean  @default(true)
+  /// Bumped by "log out of all devices" and by a password change; a token
+  /// signed with an older value is rejected.
+  tokenVersion       Int      @default(0)
+  /// Set for a recruiter who joined a company through a team invite: the
+  /// owner's user id. Everything the team shares (jobs, swipes, credits,
+  /// chats...) hangs off the owner's id.
+  companyOwnerId     String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  teamOwner   User?        @relation("TeamOwner", fields: [companyOwnerId], references: [id], onDelete: Cascade)
+  teamMembers User[]       @relation("TeamOwner")
+  teamInvites TeamInvite[]
 
   candidateProfile         CandidateProfile?
   companyProfile           Company?
@@ -384,6 +395,12 @@ model Company {
   /// Payment order ids already credited, so a webhook and a verify call can
   /// never credit the same order twice.
   creditedOrders     String[]  @default([])
+  /// GSTIN submitted for manual review (verification method "gst").
+  gstin              String    @default("")
+  /// "email" | "gst" | "" -- how the company was (or is being) verified.
+  verificationMethod String    @default("")
+  /// Work-email code state: { hash, expires, sentAt, tries, sends, fails, windowStart }.
+  verificationOtp    Json?
   foundedYear        Int?
   contactEmail       String    @default("")
   linkedin           String    @default("")
@@ -571,4 +588,27 @@ model Payment {
 
   @@index([recruiterId, createdAt])
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: team members. Only the account owner can invite or remove people.
+// ---------------------------------------------------------------------------
+
+/// A pending invite for a recruiter to join an owner's company. Only the
+/// sha256 of the token is stored; the token itself goes out in the email.
+model TeamInvite {
+  id          String    @id @default(uuid())
+  ownerId     String
+  email       String
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@index([email])
+  @@map("team_invites")
 }

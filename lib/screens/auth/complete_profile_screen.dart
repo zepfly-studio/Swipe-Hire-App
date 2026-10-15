@@ -534,7 +534,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
           ? const SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+              child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
           : Text(_isEditMode ? 'Save changes' : 'Continue'),
     );
   }

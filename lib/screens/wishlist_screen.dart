@@ -109,7 +109,7 @@ class _WishlistTile extends StatelessWidget {
           gradient: AppColors.rejectGradient,
           borderRadius: BorderRadius.circular(18),
         ),
-        child: const Icon(Icons.delete_outline, color: Colors.white),
+        child: const Icon(Icons.delete_outline, color: AppColors.onPrimary),
       ),
       child: Container(
         padding: const EdgeInsets.all(12),

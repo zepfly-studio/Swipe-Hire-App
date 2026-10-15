@@ -257,7 +257,7 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
                           child: _applying
-                              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                               : Text(_applied == true ? 'Applied' : 'Apply Now'),
                         ),
                       ),

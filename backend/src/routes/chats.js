@@ -3,6 +3,7 @@ const rateLimit = require("express-rate-limit");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middleware/requireAuth");
 const { notify, inBackground } = require("../lib/notify");
+const { notifyCompany, companyUserIds } = require("../lib/teamNotify");
 const {
   loadParties,
   swipeInfo,
@@ -47,8 +48,27 @@ const bulkLimiter = rateLimit({
 const isCompany = (user) => user.role === "recruiter";
 
 // `{ companyId, candidateId }` for the pair, from the viewer's point of view.
+// A team member talks as the company (the owner's id).
 function pairOf(viewer, otherId) {
-  return isCompany(viewer) ? { companyId: viewer.id, candidateId: otherId } : { companyId: otherId, candidateId: viewer.id };
+  return isCompany(viewer) ? { companyId: viewer.companyId, candidateId: otherId } : { companyId: otherId, candidateId: viewer.id };
+}
+
+// The id the viewer's side of the pair goes by: the company id for any
+// teammate, the user id for a candidate.
+const selfIdOf = (viewer) => (isCompany(viewer) ? viewer.companyId : viewer.id);
+
+// "What the other side sent": for a company viewer that is the candidate's
+// messages (any teammate's are the company's own); for a candidate it is
+// everything they did not send themselves.
+function incomingFilter(viewer, otherId) {
+  return isCompany(viewer) ? { senderId: otherId } : { senderId: { not: viewer.id } };
+}
+
+async function senderNames(rows) {
+  const ids = [...new Set(rows.map((r) => r.senderId))];
+  if (!ids.length) return new Map();
+  const users = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+  return new Map(users.map((u) => [u.id, u.name]));
 }
 
 function validText(raw) {
@@ -80,15 +100,18 @@ async function findOther(viewer, otherId) {
 async function deliver({ sender, recipientId, text, senderName }) {
   const senderIsCompany = isCompany(sender);
   const { companyId, candidateId } = pairOf(sender, recipientId);
-  const link = `/messages?with=${sender.id}`;
+  // The other side knows this conversation by the company id (owner) or the candidate id.
+  const link = `/messages?with=${senderIsCompany ? companyId : candidateId}`;
 
   // One unread `message` notification per sender at a time: while the last
   // one is still unread, further messages only push, they don't fill the
   // bell and don't email again.
-  const alreadyUnread = await prisma.notification.findFirst({
-    where: { userId: recipientId, type: "message", link, readAt: null },
-    select: { id: true },
-  });
+  const alreadyUnread = senderIsCompany
+    ? await prisma.notification.findFirst({
+        where: { userId: recipientId, type: "message", link, readAt: null },
+        select: { id: true },
+      })
+    : null;
 
   const message = await prisma.chatMessage.create({
     data: { companyId, candidateId, senderId: sender.id, text },
@@ -105,10 +128,16 @@ async function deliver({ sender, recipientId, text, senderName }) {
   // exchange sees it; push and email follow in the background.
   const title = `New message from ${senderName}`;
   const body = text.slice(0, 120);
-  if (!alreadyUnread) {
-    await prisma.notification.create({ data: { userId: recipientId, type: "message", title, body, link } });
+  if (senderIsCompany) {
+    if (!alreadyUnread) {
+      await prisma.notification.create({ data: { userId: recipientId, type: "message", title, body, link } });
+    }
+    inBackground(notify(recipientId, { title, body, type: "message", link, inbox: false, email: !alreadyUnread }));
+  } else {
+    // A candidate wrote to the company: the owner and every teammate hear
+    // about it (each with the same once-while-unread rule).
+    await notifyCompany(companyId, { title, body, type: "message", link, email: true }, { dedupeUnread: true });
   }
-  inBackground(notify(recipientId, { title, body, type: "message", link, inbox: false, email: !alreadyUnread }));
   return message;
 }
 
@@ -118,7 +147,7 @@ async function deliver({ sender, recipientId, text, senderName }) {
 router.get("/", async (req, res) => {
   const viewer = req.user;
   const viewerIsCompany = isCompany(viewer);
-  const mine = viewerIsCompany ? { companyId: viewer.id } : { candidateId: viewer.id };
+  const mine = viewerIsCompany ? { companyId: viewer.companyId } : { candidateId: viewer.id };
   const otherField = viewerIsCompany ? "candidateId" : "companyId";
 
   const lastMessages = await prisma.chatMessage.findMany({
@@ -130,14 +159,16 @@ router.get("/", async (req, res) => {
   if (!lastMessages.length) return res.json({ conversations: [] });
 
   const otherIds = lastMessages.map((m) => m[otherField]);
+  const teamIds = viewerIsCompany ? await companyUserIds(viewer.companyId) : [];
   const [unreadRows, parties, swipes] = await Promise.all([
     prisma.chatMessage.groupBy({
       by: [otherField],
-      where: { ...mine, senderId: { not: viewer.id }, readAt: null },
+      // From the other side: for a company, anyone who is not on the team.
+      where: { ...mine, senderId: viewerIsCompany ? { notIn: teamIds } : { not: viewer.id }, readAt: null },
       _count: { _all: true },
     }),
     loadParties(otherIds),
-    swipeInfo(viewer.id, viewerIsCompany, otherIds),
+    swipeInfo(selfIdOf(viewer), viewerIsCompany, otherIds),
   ]);
   const unread = new Map(unreadRows.map((r) => [r[otherField], r._count._all]));
 
@@ -148,7 +179,11 @@ router.get("/", async (req, res) => {
       id: otherId,
       ...toWith(parties.get(otherId), viewerIsCompany, { jobTitle: info?.jobTitle || "" }),
       stage: info?.stage ?? null,
-      lastMessage: { text: m.text, at: iso(m.createdAt), mine: m.senderId === viewer.id },
+      lastMessage: {
+        text: m.text,
+        at: iso(m.createdAt),
+        mine: viewerIsCompany ? m.senderId !== m.candidateId : m.senderId === viewer.id,
+      },
       unread: unread.get(otherId) ?? 0,
       updatedAt: iso(m.createdAt),
     };
@@ -160,13 +195,13 @@ router.get("/", async (req, res) => {
 router.get("/contacts", async (req, res) => {
   const viewer = req.user;
   const viewerIsCompany = isCompany(viewer);
-  const mine = viewerIsCompany ? { companyId: viewer.id } : { candidateId: viewer.id };
+  const mine = viewerIsCompany ? { companyId: viewer.companyId } : { candidateId: viewer.id };
   const otherField = viewerIsCompany ? "candidateId" : "companyId";
 
   let otherIds;
   if (viewerIsCompany) {
     const rows = await prisma.candidateSwipe.findMany({
-      where: { recruiterId: viewer.id, action: "right" },
+      where: { recruiterId: viewer.companyId, action: "right" },
       select: { candidateId: true },
       distinct: ["candidateId"],
     });
@@ -188,7 +223,7 @@ router.get("/contacts", async (req, res) => {
 
   const [parties, swipes, lastRows] = await Promise.all([
     loadParties(otherIds),
-    swipeInfo(viewer.id, viewerIsCompany, otherIds),
+    swipeInfo(selfIdOf(viewer), viewerIsCompany, otherIds),
     prisma.chatMessage.groupBy({
       by: [otherField],
       where: { ...mine, [otherField]: { in: otherIds } },
@@ -217,8 +252,12 @@ router.get("/contacts", async (req, res) => {
 
 // GET /chats/unread-count -> { count }
 router.get("/unread-count", async (req, res) => {
-  const mine = isCompany(req.user) ? { companyId: req.user.id } : { candidateId: req.user.id };
-  const count = await prisma.chatMessage.count({ where: { ...mine, senderId: { not: req.user.id }, readAt: null } });
+  const company = isCompany(req.user);
+  const mine = company ? { companyId: req.user.companyId } : { candidateId: req.user.id };
+  const teamIds = company ? await companyUserIds(req.user.companyId) : [];
+  const count = await prisma.chatMessage.count({
+    where: { ...mine, senderId: company ? { notIn: teamIds } : { not: req.user.id }, readAt: null },
+  });
   res.json({ count });
 });
 
@@ -241,7 +280,7 @@ router.post(
     }
 
     const allowedRows = await prisma.candidateSwipe.findMany({
-      where: { recruiterId: req.user.id, candidateId: { in: ids }, action: "right" },
+      where: { recruiterId: req.user.companyId, candidateId: { in: ids }, action: "right" },
       select: { candidateId: true },
       distinct: ["candidateId"],
     });
@@ -249,7 +288,7 @@ router.post(
     const skipped = ids.filter((id) => !allowed.has(id));
     const targets = ids.filter((id) => allowed.has(id));
 
-    const senderName = companyName({ ...req.user, companyProfile: await prisma.company.findUnique({ where: { ownerId: req.user.id } }) });
+    const senderName = companyName({ ...req.user, companyProfile: await prisma.company.findUnique({ where: { ownerId: req.user.companyId } }) });
     let sent = 0;
     for (const candidateId of targets) {
       await deliver({ sender: req.user, recipientId: candidateId, text: checked.text, senderName });
@@ -273,7 +312,7 @@ router.get("/:otherId", async (req, res) => {
   if (!hasMessages) {
     // Opening an empty thread is fine only for pairs that are allowed to talk.
     const allowed = viewerIsCompany
-      ? await hasRightSwipe(viewer.id, other.id)
+      ? await hasRightSwipe(viewer.companyId, other.id)
       : await companyContacted(other.id, viewer.id);
     if (!allowed) {
       return res.status(403).json({
@@ -284,7 +323,7 @@ router.get("/:otherId", async (req, res) => {
 
   const readAt = new Date();
   await Promise.all([
-    prisma.chatMessage.updateMany({ where: { ...pair, senderId: other.id, readAt: null }, data: { readAt } }),
+    prisma.chatMessage.updateMany({ where: { ...pair, ...incomingFilter(viewer, other.id), readAt: null }, data: { readAt } }),
     // The bell entry for this conversation is handled too; the next message
     // from them raises a fresh one.
     prisma.notification.updateMany({
@@ -294,10 +333,11 @@ router.get("/:otherId", async (req, res) => {
   ]);
 
   const rows = await prisma.chatMessage.findMany({ where: pair, orderBy: { createdAt: "desc" }, take: THREAD_LIMIT });
-  const info = (await swipeInfo(viewer.id, viewerIsCompany, [other.id])).get(other.id);
+  const info = (await swipeInfo(selfIdOf(viewer), viewerIsCompany, [other.id])).get(other.id);
+  const names = viewerIsCompany ? await senderNames(rows) : null;
   res.json({
     with: toWith(other, viewerIsCompany, { jobTitle: info?.jobTitle || "" }),
-    messages: rows.reverse().map((m) => toChatMessage(m, viewer.id)),
+    messages: rows.reverse().map((m) => toChatMessage(m, viewer.id, { company: viewerIsCompany, names })),
   });
 });
 
@@ -312,7 +352,7 @@ router.post("/:otherId", sendLimiter, async (req, res) => {
   if (checked.error) return res.status(400).json({ error: checked.error, field: "text" });
 
   if (viewerIsCompany) {
-    if (!(await hasRightSwipe(viewer.id, other.id))) {
+    if (!(await hasRightSwipe(viewer.companyId, other.id))) {
       return res.status(403).json({ error: "You can only message candidates you have shortlisted" });
     }
   } else if (!(await companyContacted(other.id, viewer.id))) {
@@ -320,10 +360,10 @@ router.post("/:otherId", sendLimiter, async (req, res) => {
   }
 
   const senderName = viewerIsCompany
-    ? companyName({ ...viewer, companyProfile: await prisma.company.findUnique({ where: { ownerId: viewer.id } }) })
+    ? companyName({ ...viewer, companyProfile: await prisma.company.findUnique({ where: { ownerId: viewer.companyId } }) })
     : viewer.name;
   const message = await deliver({ sender: viewer, recipientId: other.id, text: checked.text, senderName });
-  res.status(201).json({ message: toChatMessage(message, viewer.id) });
+  res.status(201).json({ message: toChatMessage(message, viewer.id, { company: viewerIsCompany }) });
 });
 
 module.exports = router;

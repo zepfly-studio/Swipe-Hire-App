@@ -29,7 +29,7 @@ function generateOtp() {
 }
 
 function signToken(user) {
-  return jwt.sign({ sub: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign({ sub: user.id, role: user.role, v: user.tokenVersion ?? 0 }, process.env.JWT_SECRET, { expiresIn: "30d" });
 }
 
 async function sessionResponse(user) {
@@ -267,10 +267,30 @@ router.post("/password/reset", async (req, res) => {
   if (error) return res.status(400).json({ error });
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  const { count } = await prisma.user.updateMany({ where: { email }, data: { passwordHash } });
+  // A reset also signs the account out everywhere (tokenVersion + 1).
+  const { count } = await prisma.user.updateMany({
+    where: { email },
+    data: { passwordHash, tokenVersion: { increment: 1 } },
+  });
   if (count === 0) return res.status(400).json({ error: "That code is not valid. Please request a new one." });
   await prisma.otpCode.deleteMany({ where: { email, purpose: "reset" } });
   return res.json({ reset: true });
 });
 
+// POST /auth/logout -- nothing to do server side (the app drops its token);
+// kept so every client can call the same pair of endpoints.
+router.post("/logout", (req, res) => {
+  res.json({ ok: true });
+});
+
+// POST /auth/logout-all -- signs the account out on every device, this one
+// included: every token issued so far carries the old tokenVersion.
+router.post("/logout-all", requireAuth, async (req, res) => {
+  await prisma.user.update({ where: { id: req.user.id }, data: { tokenVersion: { increment: 1 } } });
+  res.json({ ok: true });
+});
+
 module.exports = router;
+// Shared with routes/users.js (password change returns a fresh token).
+module.exports.signToken = signToken;
+module.exports.MIN_PASSWORD_LENGTH = MIN_PASSWORD_LENGTH;

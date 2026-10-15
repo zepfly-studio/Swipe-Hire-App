@@ -1,7 +1,7 @@
 const express = require("express");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middleware/requireAuth");
-const { notify } = require("../lib/notify");
+const { notifyCompany } = require("../lib/teamNotify");
 const { normalizeSkills } = require("../lib/derive");
 const { matchScore } = require("../lib/matching");
 const { str, num, int, bool, strList, requireRole } = require("../lib/validate");
@@ -255,7 +255,7 @@ router.get("/recommended", requireRole("candidate"), async (req, res) => {
 // how many people applied.
 router.get("/mine", requireRole("recruiter"), async (req, res) => {
   const postings = await prisma.jobPosting.findMany({
-    where: { recruiterId: req.user.id },
+    where: { recruiterId: req.user.companyId },
     orderBy: { createdAt: "desc" },
     include: POSTING_INCLUDE,
   });
@@ -320,11 +320,11 @@ router.post("/", requireRole("recruiter"), async (req, res) => {
     data.status = "open";
     data.isOpen = true;
   }
-  if (data.status !== "closed" && (await activeJobCount(req.user.id)) >= MAX_ACTIVE_JOBS) {
+  if (data.status !== "closed" && (await activeJobCount(req.user.companyId)) >= MAX_ACTIVE_JOBS) {
     return res.status(400).json({ error: ACTIVE_JOBS_ERROR });
   }
   const posting = await prisma.jobPosting.create({
-    data: { recruiterId: req.user.id, ...data },
+    data: { recruiterId: req.user.companyId, ...data },
     include: POSTING_INCLUDE,
   });
   res.status(201).json(toJobPosting(posting, { stats: { swiped: 0, shortlisted: 0, interviewing: 0, hired: 0 } }));
@@ -344,7 +344,7 @@ async function ownPosting(req, res) {
     res.status(404).json({ error: "Job posting not found." });
     return null;
   }
-  if (posting.recruiterId !== req.user.id) {
+  if (posting.recruiterId !== req.user.companyId) {
     res.status(403).json({ error: "You can only edit your own postings." });
     return null;
   }
@@ -473,7 +473,7 @@ router.post("/:id/apply", requireRole("candidate"), async (req, res) => {
     include: OPPORTUNITY_INCLUDE,
   });
 
-  await notify(posting.recruiterId, {
+  await notifyCompany(posting.recruiterId, {
     title: "New applicant",
     body: `${req.user.name} applied for ${posting.title}.`,
     type: "applied",

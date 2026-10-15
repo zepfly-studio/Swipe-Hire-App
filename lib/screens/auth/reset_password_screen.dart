@@ -112,7 +112,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             gradient: AppColors.accentGradient,
                             borderRadius: BorderRadius.circular(22),
                           ),
-                          child: const Icon(Icons.lock_reset_rounded, color: Colors.white, size: 36),
+                          child: const Icon(Icons.lock_reset_rounded, color: AppColors.onPrimary, size: 36),
                         ),
                         const SizedBox(height: 18),
                         const Text(
@@ -200,7 +200,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               ? const SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                               : const Text('Reset password'),
                         ),
                         const SizedBox(height: 16),

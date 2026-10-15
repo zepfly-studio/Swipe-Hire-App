@@ -18,8 +18,11 @@ enum NotificationTargetKind {
   /// `/company/swipe?search=<id>`
   swipe,
 
-  /// `/company/verify` (ignored for now)
+  /// `/company/verify` -- the "Get verified" screen
   verify,
+
+  /// `/company/team` -- the team screen
+  team,
   unknown,
 }
 
@@ -61,6 +64,7 @@ NotificationTarget parseNotificationLink(String? link) {
     '/company/shortlisted' => NotificationTarget(NotificationTargetKind.shortlisted, q('job') ?? q('jobId')),
     '/company/swipe' => NotificationTarget(NotificationTargetKind.swipe, q('search')),
     '/company/verify' => const NotificationTarget(NotificationTargetKind.verify),
+    '/company/team' => const NotificationTarget(NotificationTargetKind.team),
     _ => const NotificationTarget(NotificationTargetKind.unknown),
   };
 }

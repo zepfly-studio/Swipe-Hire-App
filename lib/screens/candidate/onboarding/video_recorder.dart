@@ -255,7 +255,7 @@ class _VideoRecorderState extends State<VideoRecorder>
           child: AspectRatio(
             aspectRatio: 3 / 4,
             child: Container(
-              color: const Color(0xFF101614),
+              color: AppColors.mediaBg,
               child: _cameraBox(),
             ),
           ),
@@ -299,21 +299,21 @@ class _VideoRecorderState extends State<VideoRecorder>
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: _state == _RecState.starting
-              ? const CircularProgressIndicator(color: Colors.white)
+              ? const CircularProgressIndicator(color: AppColors.onPrimary)
               : Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(
                       Icons.videocam_outlined,
                       size: 44,
-                      color: Colors.white70,
+                      color: AppColors.onPrimaryMuted,
                     ),
                     const SizedBox(height: 14),
                     const Text(
                       'Say your name, your role and why a company should hire you.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.onPrimary,
                         fontSize: 14.5,
                         height: 1.4,
                       ),
@@ -322,7 +322,7 @@ class _VideoRecorderState extends State<VideoRecorder>
                     FilledButton.icon(
                       onPressed: _openCamera,
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.white,
+                        backgroundColor: AppColors.onPrimary,
                         foregroundColor: AppColors.primary,
                       ),
                       icon: const Icon(Icons.videocam_rounded, size: 18),
@@ -352,12 +352,12 @@ class _VideoRecorderState extends State<VideoRecorder>
           Positioned(left: 12, right: 12, top: 12, child: _topBar()),
         if (_state == _RecState.countdown)
           Container(
-            color: Colors.black38,
+            color: AppColors.scrimLight,
             alignment: Alignment.center,
             child: Text(
               '$_countdown',
               style: const TextStyle(
-                color: Colors.white,
+                color: AppColors.onPrimary,
                 fontSize: 96,
                 fontWeight: FontWeight.w800,
               ),
@@ -379,8 +379,8 @@ class _VideoRecorderState extends State<VideoRecorder>
               child: LinearProgressIndicator(
                 value: (_elapsed / _max).clamp(0, 1),
                 minHeight: 5,
-                backgroundColor: Colors.white30,
-                valueColor: const AlwaysStoppedAnimation(Colors.white),
+                backgroundColor: AppColors.onPrimarySubtle,
+                valueColor: const AlwaysStoppedAnimation(AppColors.onPrimary),
               ),
             ),
             // The 5 s marker.
@@ -390,7 +390,7 @@ class _VideoRecorderState extends State<VideoRecorder>
                 widthFactor: _min / _max,
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: Container(width: 2, height: 9, color: Colors.white),
+                  child: Container(width: 2, height: 9, color: AppColors.onPrimary),
                 ),
               ),
             ),
@@ -400,7 +400,7 @@ class _VideoRecorderState extends State<VideoRecorder>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.black54,
+            color: AppColors.scrimStrong,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -411,7 +411,7 @@ class _VideoRecorderState extends State<VideoRecorder>
               Text(
                 '$secs / 15 sec',
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.onPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 12.5,
                 ),
@@ -507,7 +507,7 @@ class _BlinkingDotState extends State<_BlinkingDot>
         width: 9,
         height: 9,
         decoration: const BoxDecoration(
-          color: Colors.red,
+          color: AppColors.recording,
           shape: BoxShape.circle,
         ),
       ),
@@ -566,8 +566,8 @@ class _RecordButtonState extends State<_RecordButton>
                     height: widget.recording ? 30 : 58,
                     decoration: BoxDecoration(
                       color: widget.pulsing
-                          ? Colors.red.withValues(alpha: 0.5)
-                          : Colors.red,
+                          ? AppColors.recording.withValues(alpha: 0.5)
+                          : AppColors.recording,
                       borderRadius: BorderRadius.circular(
                         widget.recording ? 8 : 29,
                       ),
@@ -601,7 +601,7 @@ class _RingPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 5
         ..strokeCap = StrokeCap.round
-        ..color = Colors.red;
+        ..color = AppColors.recording;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         -math.pi / 2,

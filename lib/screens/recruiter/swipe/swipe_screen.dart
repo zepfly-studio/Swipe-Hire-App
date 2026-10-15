@@ -444,7 +444,7 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
               _RoundButton(
                 tooltip: top?.wishlisted == true ? 'Remove from wishlist' : 'Add to wishlist',
                 icon: top?.wishlisted == true ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: const Color(0xFF7C3AED),
+                color: AppColors.wishlist,
                 size: 48,
                 filled: top?.wishlisted == true,
                 onTap: enabled ? () => _c.toggleWishlist(top) : null,
@@ -556,7 +556,7 @@ class _FilterRow extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
-                    child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 11)),
+                    child: Text('$count', style: const TextStyle(color: AppColors.onPrimary, fontSize: 11)),
                   ),
                 ],
               ],
@@ -637,7 +637,7 @@ class _Stamp extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.85),
+          color: AppColors.onPrimary.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: color, width: 3),
         ),

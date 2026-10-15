@@ -394,7 +394,7 @@ class _JobPostingEditorScreenState extends State<_JobPostingEditorScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         child: _saving
-                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                             : Text(_isEditMode ? 'Save changes' : 'Post job'),
                       ),
                     ],

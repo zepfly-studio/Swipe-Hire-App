@@ -537,7 +537,7 @@ class _CandidateHomeScreenState extends State<CandidateHomeScreen>
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.2,
-                          color: Colors.white,
+                          color: AppColors.onPrimary,
                         ),
                       )
                     : const Text('Save preferences'),

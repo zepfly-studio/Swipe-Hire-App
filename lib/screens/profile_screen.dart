@@ -13,6 +13,7 @@ import '../widgets/animated_background.dart';
 import '../widgets/candidate_card_face.dart';
 import '../widgets/fade_in_up.dart';
 import '../widgets/app_toast.dart';
+import 'account/account_security_screen.dart';
 import 'recruiter/company_profile_screen.dart';
 import '../widgets/email_toggle_tile.dart';
 
@@ -240,7 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: FilledButton.icon(
                     onPressed: _saving ? null : _save,
                     icon: _saving
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.4, color: AppColors.onPrimary))
                         : const Icon(Icons.save_outlined),
                     label: Text(_saving ? 'Saving...' : 'Save changes'),
                     style: FilledButton.styleFrom(
@@ -258,6 +259,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     icon: const Icon(Icons.apartment_rounded),
                     label: const Text('Company page & verification'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FadeInUp(
+                  delay: const Duration(milliseconds: 265),
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AccountSecurityScreen()),
+                    ),
+                    icon: const Icon(Icons.lock_outline_rounded),
+                    label: const Text('Account security'),
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(52),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

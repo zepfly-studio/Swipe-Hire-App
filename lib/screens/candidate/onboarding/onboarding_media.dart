@@ -165,17 +165,17 @@ class _VideoPreviewBoxState extends State<VideoPreviewBox> {
       child: AspectRatio(
         aspectRatio: widget.aspectRatio,
         child: Container(
-          color: Colors.black,
+          color: AppColors.mediaBg,
           child: _failed
               ? const Center(
                   child: Text(
                     'Could not load the video',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: AppColors.onPrimaryMuted),
                   ),
                 )
               : c == null
               ? const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
+                  child: CircularProgressIndicator(color: AppColors.onPrimary),
                 )
               : GestureDetector(
                   onTap: () =>
@@ -197,12 +197,12 @@ class _VideoPreviewBoxState extends State<VideoPreviewBox> {
                           child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: const BoxDecoration(
-                              color: Colors.black54,
+                              color: AppColors.scrimStrong,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
                               Icons.play_arrow_rounded,
-                              color: Colors.white,
+                              color: AppColors.onPrimary,
                               size: 36,
                             ),
                           ),

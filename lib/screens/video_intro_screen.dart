@@ -105,7 +105,7 @@ class _VideoIntroScreenState extends State<VideoIntroScreen> {
                             borderRadius: BorderRadius.circular(26),
                             boxShadow: [
                               BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.4),
+                                  color: AppColors.scrim.withValues(alpha: 0.4),
                                   blurRadius: 24,
                                   offset: const Offset(0, 14)),
                             ],
@@ -200,7 +200,7 @@ class _VideoIntroScreenState extends State<VideoIntroScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black54],
+                colors: [Colors.transparent, AppColors.scrimStrong],
                 stops: [0.6, 1.0],
               ),
             ),
@@ -210,8 +210,8 @@ class _VideoIntroScreenState extends State<VideoIntroScreen> {
             allowScrubbing: true,
             colors: const VideoProgressColors(
               playedColor: AppColors.accentAlt,
-              bufferedColor: Colors.white24,
-              backgroundColor: Colors.white12,
+              bufferedColor: AppColors.onPrimaryFaint,
+              backgroundColor: AppColors.onPrimaryGhost,
             ),
           ),
           Positioned(
@@ -221,7 +221,7 @@ class _VideoIntroScreenState extends State<VideoIntroScreen> {
               child: IconButton(
                 key: ValueKey(_controller!.value.isPlaying),
                 iconSize: 56,
-                color: Colors.white70,
+                color: AppColors.onPrimaryMuted,
                 icon: Icon(_controller!.value.isPlaying
                     ? Icons.pause_circle_filled
                     : Icons.play_circle_fill),

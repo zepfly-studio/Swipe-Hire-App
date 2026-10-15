@@ -24,9 +24,9 @@ String candidateExpectedSalaryLabel(Candidate c) =>
 
 /// Match badge colours: >= 75 green, >= 45 amber, otherwise grey.
 ({Color fg, Color bg}) matchBadgeColors(int score) {
-  if (score >= 75) return (fg: AppColors.likeText, bg: AppColors.like.withValues(alpha: 0.12));
-  if (score >= 45) return (fg: AppColors.warning, bg: AppColors.warning.withValues(alpha: 0.12));
-  return (fg: AppColors.textSecondary, bg: AppColors.surfaceAlt);
+  if (score >= 75) return (fg: AppColors.matchHighText, bg: AppColors.matchHigh.withValues(alpha: 0.12));
+  if (score >= 45) return (fg: AppColors.matchMid, bg: AppColors.matchMid.withValues(alpha: 0.12));
+  return (fg: AppColors.matchLow, bg: AppColors.surfaceAlt);
 }
 
 /// "NN% match".
@@ -249,7 +249,7 @@ class _IntroVideoState extends State<IntroVideo> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        color: Colors.black,
+        color: AppColors.mediaBg,
         constraints: const BoxConstraints(maxHeight: 440),
         child: AspectRatio(
           aspectRatio: c != null && c.value.isInitialized ? c.value.aspectRatio.clamp(0.5, 1.8) : 16 / 9,
@@ -258,15 +258,15 @@ class _IntroVideoState extends State<IntroVideo> {
                   onTap: _start,
                   child: Center(
                     child: _loading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const CircularProgressIndicator(color: AppColors.onPrimary)
                         : Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.play_circle_fill_rounded, size: 56, color: Colors.white),
+                              const Icon(Icons.play_circle_fill_rounded, size: 56, color: AppColors.onPrimary),
                               const SizedBox(height: 6),
                               Text(
                                 _failed ? 'Could not play. Tap to retry' : 'Tap to play intro video',
-                                style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+                                style: const TextStyle(color: AppColors.onPrimaryMuted, fontSize: 12.5),
                               ),
                             ],
                           ),
@@ -279,7 +279,7 @@ class _IntroVideoState extends State<IntroVideo> {
                     children: [
                       VideoPlayer(c),
                       if (!c.value.isPlaying)
-                        const Center(child: Icon(Icons.play_arrow_rounded, size: 64, color: Colors.white70)),
+                        const Center(child: Icon(Icons.play_arrow_rounded, size: 64, color: AppColors.onPrimaryMuted)),
                     ],
                   ),
                 ),

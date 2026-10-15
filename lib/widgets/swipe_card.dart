@@ -180,7 +180,7 @@ class _ResumePreview extends StatelessWidget {
         aspectRatio: 1 / 1.3,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.onPrimary,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppColors.border),
           ),
@@ -212,12 +212,12 @@ class _ResumePreview extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.68),
+                      color: AppColors.scrim.withValues(alpha: 0.68),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       hasPdf ? '⤢ Double-tap to open resume' : 'No resume file · double-tap for summary',
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: AppColors.onPrimary, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),

@@ -33,7 +33,7 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
     return showDialog<UserRole>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('How will you use SwipeHire?'),
+        title: const Text('How will you use Swipe Hire?'),
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.of(context).pop(UserRole.candidate),
@@ -141,7 +141,7 @@ class _GoogleMark extends StatelessWidget {
       ),
       child: const Text(
         'G',
-        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF4285F4), height: 1),
+        style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.googleBlue, height: 1),
       ),
     );
   }
