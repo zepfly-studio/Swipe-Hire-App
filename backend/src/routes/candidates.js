@@ -92,34 +92,58 @@ function cardWithMatch(user, postings) {
   return toCandidate(user, profile, match);
 }
 
-// GET /candidates?cursor=<last id>&limit=20&...filters&jobId=&sort=match
+// Ranking position of a card: best match first, then the newest sign-up, then
+// id so the order is total. The cursor is the last card's position, which
+// stays correct as swiped candidates drop out of the list between pages.
+function rankKey(score, createdAt, id) {
+  return `${String(score ?? -1).padStart(4, "0")}|${String(createdAt.getTime()).padStart(15, "0")}|${id}`;
+}
+
+// GET /candidates?cursor=&limit=20&...filters&jobId=&sort=match|newest
 // The recruiter's swipe deck: finished profiles only, excluding anyone this
 // recruiter has already swiped on (so the deck is the same on every device).
 // Each card carries its best match against the recruiter's open postings.
+//
+// Order: with at least one open posting the best match comes first and, among
+// equal matches, the newest sign-up (`sort=newest` skips the match ranking).
+// With no posting there is nothing to match against, so newest comes first.
 router.get("/", requireRole("recruiter"), async (req, res) => {
   const limit = Math.min(Math.max(int(req.query.limit, 20), 1), MAX_PAGE);
   const jobId = str(req.query.jobId, 100);
   const where = deckWhere(req.query, req.user.id);
   const postings = await postingsToMatch(req.user.id, jobId);
+  const cursor = str(req.query.cursor, 200);
+  const newestFirst = [{ createdAt: "desc" }, { id: "desc" }];
 
-  if (req.query.sort === "match" && postings.length) {
-    // Ranking needs scores for the whole filtered set, so look at a window
-    // of it, score, and return the top of that (no cursor).
+  if (req.query.sort !== "newest" && postings.length) {
+    // Ranking needs scores for the whole filtered set, so score a window of
+    // it (the newest MATCH_WINDOW candidates) and page through that.
     const users = await prisma.user.findMany({
       where,
-      orderBy: { id: "asc" },
+      orderBy: newestFirst,
       take: MATCH_WINDOW,
       include: { candidateProfile: true },
     });
-    const cards = users.map((u) => cardWithMatch(u, postings)).sort((a, b) => (b.matchScore ?? -1) - (a.matchScore ?? -1));
-    return res.json({ candidates: cards.slice(0, limit), nextCursor: null, hasMore: false });
+    const ranked = users
+      .map((u) => {
+        const card = cardWithMatch(u, postings);
+        return { card, key: rankKey(card.matchScore, u.createdAt, u.id) };
+      })
+      .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+    const remaining = cursor ? ranked.filter((r) => r.key < cursor) : ranked;
+    const page = remaining.slice(0, limit);
+    return res.json({
+      candidates: page.map((r) => r.card),
+      nextCursor: page.length ? page[page.length - 1].key : null,
+      hasMore: remaining.length > limit,
+    });
   }
 
-  const cursor = str(req.query.cursor, 100);
   const users = await prisma.user.findMany({
-    where: { ...where, ...(cursor ? { id: { gt: cursor } } : {}) },
-    orderBy: { id: "asc" },
+    where,
+    orderBy: newestFirst,
     take: limit,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: { candidateProfile: true },
   });
 

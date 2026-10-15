@@ -230,6 +230,45 @@ describe("recruiter deck, filters and match scores", () => {
     assert.equal(first.matchJobTitle, "Flutter Developer");
     assert.ok(second.matchScore < 40);
   });
+
+  it("shows the best match first by default, newest first among equals, and pages without gaps", async () => {
+    const rec = await signup("recruiter", "Order Rec");
+    const tag = `Oq${Date.now() % 100000}`;
+    const fit = { desiredRole: `${tag} Dev`, skills: ["Flutter", "Dart"], experience: "3 years", location: "Pune", expectedSalaryLpa: 12 };
+    const olderFit = await h.candidateWithProfile("Older Fit", fit);
+    const weak = await h.candidateWithProfile("Weak Fit", { ...fit, skills: ["Cobol"], experience: "Fresher", location: "Delhi", expectedSalaryLpa: 40 });
+    const newerFit = await h.candidateWithProfile("Newer Fit", fit);
+    await h.postJob(rec, { title: "Flutter Developer" });
+
+    // No `sort` at all: same ranking as sort=match.
+    const all = await api("GET", `/candidates?limit=50&q=${tag}`, { token: rec.token });
+    assert.deepEqual(
+      all.json.candidates.map((c) => c.id),
+      [newerFit.uid, olderFit.uid, weak.uid],
+    );
+    assert.equal(all.json.candidates[0].matchScore, 100);
+
+    // One card per page, following the cursor, hits every candidate once.
+    const seen = [];
+    let cursor = "";
+    for (let i = 0; i < 5; i++) {
+      const page = await api("GET", `/candidates?limit=1&q=${tag}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { token: rec.token });
+      seen.push(...page.json.candidates.map((c) => c.id));
+      if (!page.json.hasMore) break;
+      cursor = page.json.nextCursor;
+    }
+    assert.deepEqual(seen, [newerFit.uid, olderFit.uid, weak.uid]);
+
+    // Swiping someone away mid-paging must not skip the next candidate.
+    const first = await api("GET", `/candidates?limit=1&q=${tag}`, { token: rec.token });
+    await api("PUT", `/swipes/${newerFit.uid}`, { token: rec.token, body: { state: "rejected" } });
+    const next = await api("GET", `/candidates?limit=1&q=${tag}&cursor=${encodeURIComponent(first.json.nextCursor)}`, { token: rec.token });
+    assert.equal(next.json.candidates[0].id, olderFit.uid);
+
+    // sort=newest ignores the match ranking.
+    const newest = await api("GET", `/candidates?limit=50&q=${tag}&sort=newest`, { token: rec.token });
+    assert.deepEqual(newest.json.candidates.map((c) => c.id), [weak.uid, olderFit.uid]);
+  });
 });
 
 describe("jobs, filters, recommendations and applicants", () => {

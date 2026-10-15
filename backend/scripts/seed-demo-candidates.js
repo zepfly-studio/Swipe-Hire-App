@@ -1,25 +1,36 @@
-// Seeds 25 realistic demo Job Seeker (candidate) accounts into the LOCAL
-// development database. Never creates recruiters, jobs, swipes or chats.
+// Seeds 50 realistic demo Job Seeker (candidate) accounts so the recruiter's
+// deck has real-looking people to match against. Never creates recruiters,
+// jobs, swipes or chats.
 //
-//   node scripts/seed-demo-candidates.js            dry run (writes nothing)
-//   node scripts/seed-demo-candidates.js --apply    insert for real
+//   node scripts/seed-demo-candidates.js                          dry run (writes nothing)
+//   node scripts/seed-demo-candidates.js --apply                  insert into a LOCAL database
+//   node scripts/seed-demo-candidates.js --apply --allow-remote   insert into the database DATABASE_URL points at
 //
 // Safety:
-//   - refuses to run when NODE_ENV=production or DATABASE_URL isn't localhost
-//   - idempotent: an email that already exists is skipped, never updated
-//   - everything is written in one transaction (all 25 or nothing)
+//   - a non-localhost DATABASE_URL (e.g. the hosted one) is refused unless
+//     --allow-remote is passed; NODE_ENV=production is always refused
+//   - idempotent: an email that already exists is skipped; for those only the
+//     derived match columns (skillsNormalized, experienceYears, noticeDays)
+//     are refreshed
+//   - everything is written in one transaction (all 50 or nothing)
 //   - sends no email, SMS or push; every address is on reserved example.com
+//   - the accounts get a random password nobody knows, so they can be seen
+//     on the recruiter's deck but cannot be signed into. Set SEED_PASSWORD to
+//     make them loginable (local testing only).
 //
-// Sign in with any seeded email and the password below (default user123,
-// override with SEED_PASSWORD). To remove them again:
+// To remove them again:
 //   DELETE FROM users WHERE email LIKE 'demo.%@example.com' AND role = 'candidate';
 // (profiles cascade).
 
 require("dotenv").config();
+const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { PrismaClient } = require("@prisma/client");
+const { normalizeSkills, parseExperienceYears, parseNoticeDays } = require("../src/lib/derive");
 
-const PASSWORD = process.env.SEED_PASSWORD || "user123";
+const PASSWORD = process.env.SEED_PASSWORD || crypto.randomBytes(24).toString("hex");
+const EXPECTED_COUNT = 50;
+const HOURS_BETWEEN_SIGNUPS = 7; // spreads sign-ups over the last ~two weeks, so "new" means something
 
 // name, age, role, experience, qualification, location, skills, expectedLpa,
 // currentCompany, currentLpa, notice, about
@@ -116,7 +127,109 @@ const CANDIDATES = [
   ["Farhan Sheikh", 28, "QA Engineer", "4 years", "B.Tech Computer Science, Muffakham Jah College of Engineering", "Hyderabad",
     ["Selenium", "Postman", "API Testing", "Cypress", "JIRA"], 11.0, "Deccan Quality Labs", 8.5, "45 days",
     "Own regression suites for a banking web app and automate API checks. Comfortable writing test plans and working with developers to reproduce bugs."],
+
+  // ---- More mobile developers (4)
+  ["Ananya Iyer", 24, "Android Developer (Kotlin)", "2 years", "B.Tech Computer Science, SRM Institute of Science and Technology", "Chennai",
+    ["Kotlin", "Android", "Jetpack Compose", "Room", "Retrofit"], 9.0, "Tamarind Mobile", 6.5, "30 days",
+    "Built a ride-booking app and a grocery app in Kotlin with Jetpack Compose. Care about smooth scrolling and offline-first design. Looking for a product team shipping weekly."],
+  ["Rishabh Jain", 27, "iOS Developer (Swift)", "4 years", "B.E. Computer Science, BITS Pilani", "Bengaluru",
+    ["Swift", "SwiftUI", "iOS", "Core Data", "Combine"], 18.0, "Mintbox Labs", 14.0, "60 days",
+    "Shipped a payments SDK and two consumer iOS apps. Comfortable with SwiftUI, accessibility and App Store release management."],
+  ["Divya Pillai", 26, "Flutter Developer", "3 years", "B.Tech Information Technology, Cochin University", "Kochi",
+    ["Flutter", "Dart", "Firebase", "Provider", "REST APIs"], 11.0, "Backwater Apps", 8.0, "45 days",
+    "Delivered a telemedicine app with video calls and a booking flow. Write widget tests and keep the app size down. Open to remote roles."],
+  ["Manish Tiwari", 23, "React Native Developer", "1 year", "B.Tech Computer Science, KIIT Bhubaneswar", "Bhubaneswar",
+    ["React Native", "JavaScript", "Redux", "Firebase", "Git"], 5.5, "Odisha Softworks", 3.6, "15 days",
+    "Built cross-platform apps for local retail and logistics clients. Quick to pick up new libraries and happy to learn native modules."],
+
+  // ---- DevOps, cloud and data engineering (4)
+  ["Gaurav Bhatt", 30, "DevOps Engineer", "5 years", "B.Tech Computer Science, Graphic Era University", "Gurugram",
+    ["AWS", "Docker", "Kubernetes", "Terraform", "CI/CD"], 21.0, "Cloudnine Systems", 16.5, "60 days",
+    "Own the infrastructure for a SaaS platform: Terraform, EKS and blue-green deployments. Cut cloud spend by 30 percent without hurting uptime."],
+  ["Lakshmi Narayanan", 27, "Cloud Engineer", "3 years", "B.E. Computer Science, PSG College of Technology", "Coimbatore",
+    ["AWS", "Linux", "Python", "Terraform", "Monitoring"], 14.0, "Kovai Cloudworks", 10.5, "45 days",
+    "Migrated on-premise workloads to AWS and set up alerting and runbooks. Looking for a platform engineering team."],
+  ["Sahil Arora", 28, "Data Engineer", "4 years", "B.Tech Computer Science, Thapar University", "Gurugram",
+    ["Python", "SQL", "Spark", "Airflow", "AWS"], 19.0, "Fractal Metrics", 15.0, "60 days",
+    "Build batch and streaming pipelines moving billions of rows a day. Enjoy making data reliable and well documented."],
+  ["Bhavna Solanki", 26, "Machine Learning Engineer", "3 years", "M.Tech Data Science, IIIT Hyderabad", "Hyderabad",
+    ["Python", "Machine Learning", "TensorFlow", "SQL", "Docker"], 18.0, "Insightloop AI", 14.0, "60 days",
+    "Deployed recommendation and demand-forecasting models into production. Interested in MLOps and applied research with a product team."],
+
+  // ---- Product, project and operations (4)
+  ["Aarav Sharma", 29, "Product Manager", "5 years", "MBA, IIM Indore", "Mumbai",
+    ["Product Strategy", "Roadmapping", "SQL", "User Research", "Agile"], 26.0, "Fintrail", 21.0, "60 days",
+    "Grew a lending app from 50k to 600k users. Run discovery with customers, write crisp specs and work closely with engineering and design."],
+  ["Ritika Sethi", 27, "Business Analyst", "3 years", "B.Tech Computer Science and MBA, SP Jain", "Mumbai",
+    ["SQL", "Excel", "Requirements Gathering", "JIRA", "Power BI"], 12.0, "Northbridge Consulting", 9.0, "45 days",
+    "Translate business needs into clear requirements and dashboards. Comfortable with stakeholders at every level."],
+  ["Pranav Kulshreshtha", 31, "Project Manager", "7 years", "B.E. Mechanical, MNNIT Allahabad and PMP", "Noida",
+    ["Project Management", "Agile", "Scrum", "JIRA", "Stakeholder Management"], 25.0, "Kestrel IT Services", 20.0, "90 days",
+    "Delivered 20+ software projects on time with distributed teams. Strong on risk tracking and client communication."],
+  ["Aditi Rao", 24, "Scrum Master", "2 years", "B.Tech Information Technology, Manipal Institute of Technology", "Bengaluru",
+    ["Scrum", "Agile", "JIRA", "Facilitation", "Coaching"], 10.0, "Orchid Digital", 7.5, "30 days",
+    "Help two squads ship predictably with clean retros and honest burndown charts. Certified Scrum Master."],
+
+  // ---- Marketing, sales and content (5)
+  ["Simran Kaur", 25, "Digital Marketing Executive", "2 years", "BBA, Chandigarh University", "Chandigarh",
+    ["SEO", "Google Ads", "Social Media", "Content Marketing", "Analytics"], 5.5, "Pixel Reach Media", 4.0, "30 days",
+    "Run paid and organic campaigns for D2C brands and report on ROAS weekly. Looking for a growth marketing role in a startup."],
+  ["Varun Oberoi", 28, "Growth Marketing Manager", "5 years", "MBA Marketing, Symbiosis Pune", "Delhi",
+    ["SEO", "Performance Marketing", "Google Analytics", "CRM", "A/B Testing"], 18.0, "Bazaarline", 14.0, "60 days",
+    "Scaled acquisition from 5k to 80k monthly signups while lowering CAC. Own the funnel from ad to activation."],
+  ["Ishita Bose", 26, "Content Writer", "3 years", "MA English, Jadavpur University", "Kolkata",
+    ["Content Writing", "SEO", "Copywriting", "Editing", "Research"], 6.5, "Wordcraft Studio", 4.8, "30 days",
+    "Write blogs, product pages and email sequences that rank and convert. Comfortable with technical topics."],
+  ["Kunal Mehra", 27, "Sales Executive (B2B SaaS)", "3 years", "BBA, Christ University", "Bengaluru",
+    ["B2B Sales", "CRM", "Lead Generation", "Negotiation", "Cold Calling"], 8.0, "Cloudreach Software", 6.0, "30 days",
+    "Closed 1.2 crore in annual contracts last year and consistently beat quota. Comfortable with demos and long sales cycles."],
+  ["Payal Gandhi", 24, "Social Media Manager", "2 years", "B.Com, HR College Mumbai", "Mumbai",
+    ["Social Media", "Content Creation", "Canva", "Instagram", "Analytics"], 5.0, "Glow Collective", 3.8, "15 days",
+    "Grew a beauty brand's Instagram from 12k to 90k followers. Plan content calendars and work with creators."],
+
+  // ---- HR, finance and support (4)
+  ["Nandini Verma", 28, "HR Executive (Talent Acquisition)", "4 years", "MBA HR, Xavier Institute Bhubaneswar", "Pune",
+    ["Recruitment", "Sourcing", "Interviewing", "HR Operations", "LinkedIn Recruiter"], 8.5, "TalentBridge India", 6.5, "30 days",
+    "Closed 150+ tech and non-tech roles per year. Know how to source passive candidates and keep hiring managers aligned."],
+  ["Chirag Shah", 29, "Accountant", "5 years", "B.Com and CA Inter, Gujarat University", "Ahmedabad",
+    ["Tally", "GST", "Accounting", "Excel", "Financial Reporting"], 6.5, "Shah and Associates", 5.0, "30 days",
+    "Handle books, GST filing and month-end closing for a mid-size trading company. Detail oriented and deadline driven."],
+  ["Ayesha Siddiqui", 25, "Customer Support Executive", "2 years", "B.A., Aligarh Muslim University", "Lucknow",
+    ["Customer Support", "Communication", "Zendesk", "Problem Solving", "CRM"], 3.8, "Careline Solutions", 2.8, "Immediate",
+    "Resolve customer issues over chat and email with high satisfaction scores. Calm under pressure and good with escalations."],
+  ["Sumit Pandey", 26, "Operations Executive", "3 years", "BBA, Amity University Lucknow", "Lucknow",
+    ["Operations", "Excel", "Logistics", "Vendor Management", "Reporting"], 5.5, "Swift Supply Co", 4.2, "30 days",
+    "Coordinate vendors and daily dispatch reports for a regional warehouse. Looking for a growth role in operations."],
+
+  // ---- Additional engineers and freshers (4)
+  ["Tushar Wagh", 22, "Junior Flutter Developer", "Fresher", "B.Tech Computer Science, MIT World Peace University", "Pune",
+    ["Flutter", "Dart", "Firebase", "Git", "REST APIs"], 4.0, "Fresher", 0, "Immediate",
+    "Published two Flutter apps while in college, one with 5k downloads. Eager to join a team that mentors and reviews code."],
+  ["Pallavi Hegde", 23, "Junior Backend Developer", "6 months", "B.E. Computer Science, NMAMIT Nitte", "Mangaluru",
+    ["Node.js", "Express", "MongoDB", "REST APIs", "Git"], 4.5, "Coastal Digital (intern)", 1.8, "Immediate",
+    "Completed a six-month backend internship building REST APIs and writing tests. Looking for a junior role in a product team."],
+  ["Ojas Kelkar", 28, "Senior Full Stack Engineer", "6 years", "B.Tech Computer Science, IIT Roorkee", "Pune",
+    ["React", "Node.js", "TypeScript", "AWS", "PostgreSQL"], 30.0, "Helio Technologies", 24.0, "90 days",
+    "Architected a booking platform handling 50k orders a day. Mentor engineers and drive technical design reviews."],
+  ["Zoya Ansari", 25, "Software Engineer (Java)", "2 years", "B.Tech Computer Science, Jamia Millia Islamia", "Delhi",
+    ["Java", "Spring Boot", "MySQL", "REST APIs", "JUnit"], 9.0, "Capital Stack", 6.8, "30 days",
+    "Develop and maintain loan-processing services with strong unit-test coverage. Looking to grow into a backend lead."],
 ];
+
+// Placeholder portraits (randomuser.me serves these for exactly this purpose),
+// picked by the first name's gender so the deck looks like real people. The
+// number is fixed per candidate, so re-running never changes anyone's photo.
+const FEMALE_FIRST_NAMES = new Set([
+  "riya", "sneha", "priya", "sana", "pooja", "isha", "tanvi", "meera", "neha", "kavya", "shreya",
+  "ananya", "divya", "bhavna", "lakshmi", "ritika", "aditi", "simran", "ishita", "payal", "nandini",
+  "ayesha", "pallavi", "zoya",
+]);
+
+function photoFor(name, index) {
+  const female = FEMALE_FIRST_NAMES.has(name.toLowerCase().split(/\s+/)[0]);
+  const portrait = 11 + ((index * 7) % 80); // 11..90, distinct per index within each gender
+  return `https://randomuser.me/api/portraits/${female ? "women" : "men"}/${portrait}.jpg`;
+}
 
 function emailFor(name) {
   const slug = name.toLowerCase().replace(/[^a-z\s]/g, "").trim().split(/\s+/);
@@ -125,14 +238,20 @@ function emailFor(name) {
 
 async function main() {
   const apply = process.argv.includes("--apply");
+  const allowRemote = process.argv.includes("--allow-remote");
 
   const url = new URL(process.env.DATABASE_URL || "postgresql://invalid");
   const localHosts = ["localhost", "127.0.0.1", "::1"];
-  if (process.env.NODE_ENV === "production" || !localHosts.includes(url.hostname)) {
-    console.error(`Refusing to seed: NODE_ENV=${process.env.NODE_ENV || "(unset)"}, database host=${url.hostname}. Only a local development database is allowed.`);
+  const isLocal = localHosts.includes(url.hostname);
+  if (process.env.NODE_ENV === "production") {
+    console.error("Refusing to seed: NODE_ENV=production.");
     process.exit(1);
   }
-  if (CANDIDATES.length !== 25) throw new Error(`Expected 25 candidates, found ${CANDIDATES.length}`);
+  if (!isLocal && !allowRemote) {
+    console.error(`Refusing to seed: database host=${url.hostname} is not local. Pass --allow-remote if you really mean to seed this database.`);
+    process.exit(1);
+  }
+  if (CANDIDATES.length !== EXPECTED_COUNT) throw new Error(`Expected ${EXPECTED_COUNT} candidates, found ${CANDIDATES.length}`);
 
   const emails = CANDIDATES.map((c) => emailFor(c[0]));
   if (new Set(emails).size !== emails.length) throw new Error("Duplicate email in seed data");
@@ -148,7 +267,7 @@ async function main() {
 
     console.log(`Database: ${url.hostname}/${url.pathname.slice(1)}  |  mode: ${apply ? "APPLY" : "DRY RUN"}`);
     console.log(`Before: ${before.candidates} candidates, ${before.recruiters} recruiters`);
-    console.log(`Already present (skipped): ${existing.size}  |  to create: ${toCreate.length}`);
+    console.log(`Already present: ${existing.size} (match columns refreshed)  |  to create: ${toCreate.length}`);
 
     if (!apply) {
       toCreate.forEach((c) => console.log(`  would create ${emailFor(c[0]).padEnd(40)} ${c[2]}`));
@@ -157,16 +276,33 @@ async function main() {
     }
 
     const passwordHash = await bcrypt.hash(PASSWORD, 10);
+    const now = Date.now();
     await prisma.$transaction(async (tx) => {
-      for (const [name, age, role, experience, qualification, location, skills, expected, company, currentLpa, notice, about] of toCreate) {
+      // Index 0 is the newest sign-up; the list order then is "newest first".
+      for (const [index, c] of CANDIDATES.entries()) {
+        const [name, age, role, experience, qualification, location, skills, expected, company, currentLpa, notice, about] = c;
+        const email = emailFor(name);
+        const derived = {
+          skillsNormalized: normalizeSkills(skills),
+          experienceYears: parseExperienceYears(experience),
+          noticeDays: parseNoticeDays(notice),
+        };
+        const photoUrl = photoFor(name, index);
+
+        if (existing.has(email)) {
+          await tx.candidateProfile.updateMany({ where: { user: { email } }, data: { ...derived, photoUrl } });
+          continue;
+        }
+
         await tx.user.create({
           data: {
             name,
-            email: emailFor(name),
+            email,
             passwordHash,
             role: "candidate",
             profileComplete: true,
             emailVerified: true,
+            createdAt: new Date(now - index * HOURS_BETWEEN_SIGNUPS * 3600 * 1000),
             candidateProfile: {
               create: {
                 age,
@@ -175,6 +311,8 @@ async function main() {
                 desiredRole: role,
                 location,
                 skills,
+                ...derived,
+                photoUrl,
                 expectedSalaryLpa: expected,
                 noticePeriod: notice,
                 about,

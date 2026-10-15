@@ -242,13 +242,16 @@ class _VideoIntroScreenState extends State<VideoIntroScreen> {
       return Container(
         color: AppColors.surfaceAlt,
         child: const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.videocam_off_outlined, size: 48, color: AppColors.textSecondary),
-              SizedBox(height: 8),
-              Text('No intro video available', style: TextStyle(color: AppColors.textSecondary)),
-            ],
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.videocam_off_outlined, size: 48, color: AppColors.textSecondary),
+                SizedBox(height: 8),
+                Text('No intro video available', style: TextStyle(color: AppColors.textSecondary)),
+              ],
+            ),
           ),
         ),
       );
