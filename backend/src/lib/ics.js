@@ -26,7 +26,7 @@ function fold(line) {
   return out.join("\r\n");
 }
 
-function buildInterviewIcs({ uid, start, durationMinutes = 60, summary, description = "", location = "", organizer }) {
+function buildInterviewIcs({ uid, start, durationMinutes = 60, summary, description = "", location = "", organizer, url = "" }) {
   const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
   const lines = [
     "BEGIN:VCALENDAR",
@@ -43,6 +43,7 @@ function buildInterviewIcs({ uid, start, durationMinutes = 60, summary, descript
   ];
   if (description) lines.push(`DESCRIPTION:${escapeText(description)}`);
   if (location) lines.push(`LOCATION:${escapeText(location)}`);
+  if (url) lines.push(`URL:${url}`);
   if (organizer) lines.push(`ORGANIZER;CN=${escapeText(organizer)}:mailto:no-reply@swipehire.invalid`);
   lines.push("BEGIN:VALARM", "TRIGGER:-PT30M", "ACTION:DISPLAY", "DESCRIPTION:Interview in 30 minutes", "END:VALARM");
   lines.push("END:VEVENT", "END:VCALENDAR");

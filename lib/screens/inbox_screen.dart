@@ -12,7 +12,10 @@ import '../utils/time_format.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/fade_in_up.dart';
+import '../models/pair/notification_link.dart';
+import '../services/pair_session.dart';
 import 'chat_screen.dart';
+import 'messages/pair_nav.dart';
 
 /// The bell's list: everything that happened to this account, newest first,
 /// with unread ones marked. Tapping one marks it read and, when it belongs
@@ -71,6 +74,19 @@ class _InboxScreenState extends State<InboxScreen> {
       InboxService.instance.markRead(ids: [n.id]).catchError((Object e, StackTrace s) {
         ErrorReporter.report(e, s, reason: 'InboxScreen: mark read failed');
       });
+    }
+    if (n.link.isNotEmpty) {
+      final target = parseNotificationLink(n.link);
+      if (target.kind != NotificationTargetKind.unknown) {
+        bool? isCompany;
+        try {
+          isCompany = await PairSession.instance.isCompany();
+        } catch (_) {
+          isCompany = null;
+        }
+        if (!mounted) return;
+        if (isCompany != null && PairNav.openTarget(context, target, isCompany: isCompany)) return;
+      }
     }
     if (n.opportunityId.isEmpty) return;
     try {
@@ -177,6 +193,18 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 }
 
+/// Icon + colour per notification type (spec B0: shortlisted = sparkles,
+/// message = chat bubble, interview = calendar, hired = party popper,
+/// verified = badge, alert = bell, task = clipboard).
+({IconData icon, Color color}) _styleFor(String type) => switch (type) {
+      'shortlisted' => (icon: Icons.auto_awesome_rounded, color: AppColors.accent),
+      'message' => (icon: Icons.chat_bubble_rounded, color: AppColors.accentAlt),
+      'hired' => (icon: Icons.celebration_rounded, color: AppColors.like),
+      'verified' => (icon: Icons.verified_rounded, color: AppColors.info),
+      'alert' => (icon: Icons.notifications_active_rounded, color: AppColors.warning),
+      _ => toastStyleOf(toastKindForType(type)),
+    };
+
 class _NotificationTile extends StatelessWidget {
   final AppNotification item;
   final VoidCallback onTap;
@@ -184,7 +212,7 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = toastStyleOf(toastKindForType(item.type));
+    final style = _styleFor(item.type);
     return Material(
       color: item.read ? AppColors.surface : AppColors.surface,
       borderRadius: BorderRadius.circular(16),

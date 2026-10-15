@@ -6,13 +6,12 @@ import '../../services/auth_service.dart';
 import '../../services/in_app_notifier.dart';
 import '../../services/inbox_service.dart';
 import '../../services/notification_service.dart';
-import '../../services/wishlist_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../candidate/candidate_root_shell.dart';
 import '../candidate/onboarding/candidate_onboarding_screen.dart';
+import '../recruiter/onboarding/company_onboarding_screen.dart';
 import '../root_shell.dart';
-import 'complete_profile_screen.dart';
 import 'login_screen.dart';
 
 /// Root router shown after the splash screen: signed-out users see the
@@ -64,10 +63,6 @@ class _SignedInGateState extends State<_SignedInGate> {
       NotificationService.instance.initForSignedInUser(profile.uid);
       InAppNotifier.instance.start(profile.uid);
       InboxService.instance.start(profile.uid);
-      if (profile.role == UserRole.recruiter) {
-        // Pull the recruiter's wishlist/shortlist so it matches every device.
-        WishlistService.instance.loadForUser(profile.uid);
-      }
     }
     return profile;
   }
@@ -94,11 +89,10 @@ class _SignedInGateState extends State<_SignedInGate> {
         final profile = snapshot.data;
         if (profile == null) return const _LoadingScreen();
         if (!profile.profileComplete) {
-          // Recruiters keep the existing form for now; candidates get the
-          // 4-step onboarding.
+          // Candidates get the 4-step onboarding, companies the 2-step one.
           return profile.role == UserRole.candidate
               ? CandidateOnboardingScreen(user: profile)
-              : CompleteProfileScreen(user: profile);
+              : CompanyOnboardingScreen(userName: profile.name);
         }
         return profile.role == UserRole.recruiter
             ? const RootShell()

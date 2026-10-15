@@ -5,6 +5,10 @@ class AppNotification {
   final String title;
   final String body;
   final String opportunityId;
+
+  /// The website route this notification leads to (`/messages?with=<id>`,
+  /// `/interviews`, `/tasks`...); empty when it has none.
+  final String link;
   final bool read;
   final DateTime? createdAt;
 
@@ -14,19 +18,21 @@ class AppNotification {
     required this.title,
     this.body = '',
     this.opportunityId = '',
+    this.link = '',
     this.read = false,
     this.createdAt,
   });
 
   factory AppNotification.fromMap(Map<String, dynamic> map) {
     return AppNotification(
-      id: map['id'] ?? '',
-      type: map['type'] ?? 'info',
-      title: map['title'] ?? '',
-      body: map['body'] ?? '',
-      opportunityId: map['opportunityId'] ?? '',
+      id: (map['id'] ?? '').toString(),
+      type: (map['type'] ?? 'info').toString(),
+      title: (map['title'] ?? '').toString(),
+      body: (map['body'] ?? '').toString(),
+      opportunityId: (map['opportunityId'] ?? '').toString(),
+      link: (map['link'] ?? '').toString(),
       read: map['read'] == true,
-      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '')?.toLocal(),
+      createdAt: DateTime.tryParse((map['createdAt'] ?? map['at'] ?? '').toString())?.toLocal(),
     );
   }
 
@@ -36,6 +42,7 @@ class AppNotification {
         title: title,
         body: body,
         opportunityId: opportunityId,
+        link: link,
         read: true,
         createdAt: createdAt,
       );

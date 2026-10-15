@@ -93,8 +93,11 @@ function toCandidate(user, profile, match = null) {
   };
 }
 
-function toCompany(c) {
-  return {
+// `own: true` is the recruiter looking at their own company: it adds the
+// credit balance and the private contact fields. The public company page
+// (any signed-in account) never gets those.
+function toCompany(c, { own = false } = {}) {
+  const base = {
     id: c.id,
     name: c.name,
     website: c.website,
@@ -103,10 +106,29 @@ function toCompany(c) {
     size: c.size,
     location: c.location,
     logoUrl: c.logoUrl,
+    address: c.address ?? "",
+    linkedin: c.linkedin ?? "",
+    foundedYear: c.foundedYear ?? null,
     verificationStatus: c.verificationStatus,
     verified: c.verificationStatus === "verified",
     verifiedAt: iso(c.verifiedAt),
   };
+  if (!own) return base;
+  return {
+    ...base,
+    phone: c.phone ?? "",
+    contactEmail: c.contactEmail ?? "",
+    swipesLeft: c.swipesLeft ?? 0,
+    swipesPurchased: c.swipesPurchased ?? 0,
+  };
+}
+
+// open | paused | closed. `isOpen` is authoritative for "open"; rows that
+// predate the status column (isOpen=false, status left at its default) are
+// shown as paused.
+function jobStatus(posting) {
+  if (posting.isOpen) return "open";
+  return posting.status === "closed" ? "closed" : "paused";
 }
 
 // `posting.recruiter` (with its `companyProfile`) must be included.
@@ -126,14 +148,19 @@ function toJobPosting(posting, extra = {}) {
     skills: posting.skills,
     location: posting.location,
     employmentType: posting.employmentType,
+    workMode: posting.workMode ?? "onsite",
+    openings: posting.openings ?? 1,
     salaryMinLpa: posting.salaryMinLpa,
     salaryMaxLpa: posting.salaryMaxLpa,
     minExperienceYears: posting.minExperienceYears ?? 0,
+    maxExperienceYears: posting.maxExperienceYears ?? null,
+    status: jobStatus(posting),
     isOpen: posting.isOpen,
     createdAt: iso(posting.createdAt),
     matchScore: extra.matchScore ?? null,
     matchReasons: extra.matchReasons ?? [],
     applicantsCount: extra.applicantsCount ?? null,
+    stats: extra.stats ?? null,
   };
 }
 
@@ -223,6 +250,7 @@ function toNotification(n) {
     title: n.title,
     body: n.body,
     opportunityId: n.opportunityId ?? "",
+    link: n.link ?? "",
     read: Boolean(n.readAt),
     createdAt: iso(n.createdAt),
   };
@@ -245,6 +273,7 @@ module.exports = {
   toCandidateProfile,
   toCandidate,
   toCompany,
+  jobStatus,
   toJobPosting,
   toOpportunity,
   toTask,

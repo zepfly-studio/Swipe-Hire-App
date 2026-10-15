@@ -12,6 +12,11 @@ const opportunityRoutes = require("./routes/opportunities");
 const swipeRoutes = require("./routes/swipes");
 const companyRoutes = require("./routes/company");
 const taxonomyRoutes = require("./routes/taxonomy");
+const hiringRoutes = require("./routes/hiring");
+const paymentRoutes = require("./routes/payment");
+const chatRoutes = require("./routes/chats");
+const interviewRoutes = require("./routes/interviews");
+const taskRoutes = require("./routes/tasks");
 const { notifications: notificationRoutes, templates: templateRoutes } = require("./routes/inbox");
 
 // Builds the Express app without starting a listener, so the same app can
@@ -22,7 +27,8 @@ function createApp() {
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true }));
-  app.use(express.json({ limit: "256kb" }));
+  // rawBody is kept so the Razorpay webhook signature can be checked against the exact bytes sent.
+  app.use(express.json({ limit: "256kb", verify: (req, res, buf) => { req.rawBody = buf; } }));
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -57,6 +63,11 @@ function createApp() {
   app.use("/opportunities", apiLimiter, opportunityRoutes);
   app.use("/swipes", apiLimiter, swipeRoutes);
   app.use("/company", apiLimiter, companyRoutes);
+  app.use("/company", apiLimiter, hiringRoutes);
+  app.use("/payment", apiLimiter, paymentRoutes);
+  app.use("/chats", apiLimiter, chatRoutes);
+  app.use("/interviews", apiLimiter, interviewRoutes);
+  app.use("/tasks", apiLimiter, taskRoutes);
   app.use("/taxonomy", apiLimiter, taxonomyRoutes);
   app.use("/notifications", apiLimiter, notificationRoutes);
   app.use("/templates", apiLimiter, templateRoutes);

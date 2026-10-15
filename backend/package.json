@@ -9,7 +9,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "test": "node --test --test-concurrency=1 test/lib.test.js test/candidate-lib.test.js test/api.test.js test/candidate-api.test.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
     "prisma:deploy": "prisma migrate deploy",
     "seed:demo": "node scripts/seed-demo-candidates.js"
   },

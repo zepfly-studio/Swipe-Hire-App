@@ -2,17 +2,20 @@ const express = require("express");
 const multer = require("multer");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middleware/requireAuth");
-const { normalizeSkills } = require("../lib/derive");
-const { bestMatch } = require("../lib/matching");
+const { inBackground } = require("../lib/notify");
 const { str, int, requireRole } = require("../lib/validate");
-const { toCandidate, toCandidateProfile } = require("../lib/serializers");
+const { toCandidateProfile, toJobPosting } = require("../lib/serializers");
 const { FieldError, parseProfileBody, parsePreferencesBody } = require("../lib/candidateProfile");
 const { parseResumePdf } = require("../lib/resumeParser");
+const { ensureCompany } = require("../lib/credits");
+const { evaluateAlertsForCandidate } = require("../lib/savedSearches");
+const deckLib = require("../lib/deck");
 
 const router = express.Router();
 router.use(requireAuth);
 
-const MAX_PAGE = 50;
+const MAX_PAGE = 30;
+const DEFAULT_PAGE = 10;
 // How many candidates are scored and ranked per request. Fetched most
 // recently active first, so stale profiles only appear once the fresh ones
 // are used up.
@@ -26,86 +29,53 @@ const NEW_PROFILE_BONUS = 10;
 
 const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 
-function csv(value) {
-  return String(value || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+const PAUSED_MESSAGE = "This job is paused or closed. Reopen it to see candidates.";
+
+// Evaluates saved-search alerts for a candidate whose profile, video or
+// preferences just changed. Runs after the response is on its way; failures
+// are logged inside and never reach the candidate.
+function fireAlerts(candidateId, options) {
+  inBackground(evaluateAlertsForCandidate(candidateId, options));
 }
 
-function optionalNumber(value) {
-  if (value === undefined || value === null || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-// Deck filters, all optional:
-//   q           name, desired role, location or a skill contains
-//   skills      comma separated; a candidate needs any one of them
-//   location    location contains
+// Deck filters, all optional (see lib/deck.js):
+//   q            name, desired role, location, qualification or a skill contains
+//   skills       comma separated, any of (max 10)
+//   location     location OR preferred location contains
 //   expMin/expMax   years of experience
-//   ctcMin/ctcMax   expected CTC in LPA
-//   noticeMax   longest acceptable notice period, in days
-function profileFilter(query) {
-  const is = {};
-  const skills = normalizeSkills(csv(query.skills));
-  if (skills.length) is.skillsNormalized = { hasSome: skills };
+//   maxSalary    expected CTC <= this (LPA) or salary negotiable
+//   notice       comma list of notice-period days, e.g. 0,15,30
+//   ctcMin/ctcMax/noticeMax  older range filters, still honoured
+// plus the hard salary-fit rule against the job being swiped for.
+async function deckWhere({ query, recruiterId, job, exclude }) {
+  const filters = deckLib.filtersFromQuery(query);
+  const and = await deckLib.filterConditions(filters);
 
-  const location = str(query.location, 100);
-  if (location) is.location = { contains: location, mode: "insensitive" };
+  const fit = deckLib.salaryFitCondition(job);
+  if (fit) and.push({ candidateProfile: { is: fit } });
 
-  const expMin = optionalNumber(query.expMin);
-  const expMax = optionalNumber(query.expMax);
-  if (expMin !== null || expMax !== null) {
-    is.experienceYears = { ...(expMin !== null ? { gte: expMin } : {}), ...(expMax !== null ? { lte: expMax } : {}) };
-  }
-  const ctcMin = optionalNumber(query.ctcMin);
-  const ctcMax = optionalNumber(query.ctcMax);
-  if (ctcMin !== null || ctcMax !== null) {
-    is.expectedSalaryLpa = { ...(ctcMin !== null ? { gte: ctcMin } : {}), ...(ctcMax !== null ? { lte: ctcMax } : {}) };
-  }
-  const noticeMax = optionalNumber(query.noticeMax);
-  if (noticeMax !== null) is.noticeDays = { lte: noticeMax };
-
-  // Candidates who switched "open to work" off are not on any deck.
-  is.openToWork = true;
-  return { is };
-}
-
-function deckWhere(query, recruiterId) {
-  const where = {
-    role: "candidate",
-    profileComplete: true,
-    candidateProfile: profileFilter(query),
-    swipedBy: { none: { recruiterId } },
-  };
   const q = str(query.q, 100);
   if (q) {
-    where.OR = [
-      { name: { contains: q, mode: "insensitive" } },
-      { candidateProfile: { is: { desiredRole: { contains: q, mode: "insensitive" } } } },
-      { candidateProfile: { is: { location: { contains: q, mode: "insensitive" } } } },
-      { candidateProfile: { is: { qualification: { contains: q, mode: "insensitive" } } } },
-      { candidateProfile: { is: { skillsNormalized: { has: q.toLowerCase() } } } },
-    ];
+    and.push({
+      OR: [
+        { name: { contains: q, mode: "insensitive" } },
+        { candidateProfile: { is: { desiredRole: { contains: q, mode: "insensitive" } } } },
+        { candidateProfile: { is: { location: { contains: q, mode: "insensitive" } } } },
+        { candidateProfile: { is: { qualification: { contains: q, mode: "insensitive" } } } },
+        { candidateProfile: { is: { skillsNormalized: { has: q.toLowerCase() } } } },
+      ],
+    });
   }
-  return where;
-}
 
-// The postings a candidate is scored against: one if the recruiter picked
-// it, otherwise all of their open ones (the best fit wins).
-async function postingsToMatch(recruiterId, jobId) {
-  const where = { recruiterId, isOpen: true, ...(jobId ? { id: jobId } : {}) };
-  return prisma.jobPosting.findMany({
-    where,
-    select: { id: true, title: true, skillsNormalized: true, minExperienceYears: true, location: true, salaryMinLpa: true, salaryMaxLpa: true },
-  });
-}
-
-function cardWithMatch(user, postings) {
-  const profile = user.candidateProfile;
-  const match = profile && postings.length ? bestMatch(postings, profile) : null;
-  return toCandidate(user, profile, match);
+  return {
+    role: "candidate",
+    profileComplete: true,
+    // Anyone already swiped (either way) for THIS job is gone; they can still
+    // appear for the recruiter's other jobs.
+    candidateSwipesAsCandidate: { none: { recruiterId, jobPostingId: job.id } },
+    ...(exclude.length ? { id: { notIn: exclude } } : {}),
+    AND: and,
+  };
 }
 
 // Ranking position of a card, as a sortable string:
@@ -124,23 +94,75 @@ function isStale(profile, now) {
   return !last || now - last.getTime() > ACTIVE_DAYS * DAY_MS;
 }
 
-// GET /candidates?cursor=&limit=20&...filters&jobId=&sort=match|newest
-// The recruiter's swipe deck: finished profiles only, excluding anyone this
-// recruiter has already swiped on (so the deck is the same on every device).
-// Each card carries its best match against the recruiter's open postings.
+async function jobStats(jobId) {
+  const groups = await prisma.candidateSwipe.groupBy({
+    by: ["action", "stage"],
+    where: { jobPostingId: jobId },
+    _count: { _all: true },
+  });
+  const stats = { swiped: 0, shortlisted: 0, interviewing: 0, hired: 0 };
+  for (const g of groups) {
+    const n = g._count._all;
+    stats.swiped += n;
+    if (g.action === "right") {
+      stats.shortlisted += n;
+      if (g.stage === "interview") stats.interviewing += n;
+      if (g.stage === "hired") stats.hired += n;
+    }
+  }
+  return stats;
+}
+
+// GET /candidates?jobId=&exclude=&limit=10&cursor=&...filters&sort=match|newest
+// The recruiter's swipe deck for ONE job: finished, open-to-work profiles,
+// minus anyone already swiped for this job, anyone in `exclude` (already in
+// the app's stack) and anyone whose salary expectation is above the job's
+// budget without being negotiable. Never more cards than swipes left (less
+// the excluded ones the app is already holding).
 //
 // Order: profiles active within the last 15 days first; then best match first
 // (new sign-ups under 7 days get +10) and, among equals, the newest sign-up.
-// With no open posting there is nothing to match against, so that is newest
-// first. `sort=newest` skips all ranking. Candidates with openToWork off are
-// never listed.
+// `sort=newest` skips all ranking.
 router.get("/", requireRole("recruiter"), async (req, res) => {
-  const limit = Math.min(Math.max(int(req.query.limit, 20), 1), MAX_PAGE);
+  const company = await ensureCompany(req.user);
+
   const jobId = str(req.query.jobId, 100);
-  const where = deckWhere(req.query, req.user.id);
-  const postings = await postingsToMatch(req.user.id, jobId);
+  let job;
+  if (jobId) {
+    job = await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.id } });
+    if (!job) return res.status(404).json({ error: "Job not found." });
+  } else {
+    job = await deckLib.defaultJob(req.user.id);
+    if (!job) return res.status(403).json({ code: "NO_JOB", error: "Please add a job you are hiring for first" });
+  }
+  if (!job.isOpen) return res.status(409).json({ error: PAUSED_MESSAGE });
+
+  const exclude = deckLib.csv(req.query.exclude).slice(0, 200);
+  const requested = Math.min(Math.max(int(req.query.limit, DEFAULT_PAGE), 1), MAX_PAGE);
+  const limit = Math.min(requested, company.swipesLeft - exclude.length);
+  const companyProfile = await prisma.company.findUnique({
+    where: { ownerId: req.user.id },
+    select: { id: true, name: true, logoUrl: true, verificationStatus: true },
+  });
+  const jobJson = toJobPosting(
+    { ...job, recruiter: { name: req.user.name, company: req.user.company, companyProfile } },
+    { stats: await jobStats(job.id) },
+  );
+  const respond = (cards, nextCursor, hasMore) =>
+    res.json({ candidates: cards, nextCursor, hasMore, swipesLeft: company.swipesLeft, job: jobJson });
+
+  if (limit <= 0) return respond([], null, false);
+
+  const where = await deckWhere({ query: req.query, recruiterId: req.user.id, job, exclude });
   const cursor = str(req.query.cursor, 200);
-  const newestFirst = [{ createdAt: "desc" }, { id: "desc" }];
+
+  // Cards carry the "wishlisted" flag and `contact` for people already shortlisted.
+  const toCards = async (users) => {
+    const rel = await deckLib.relationsFor(req.user.id, users.map((u) => u.id));
+    return users.map((u) =>
+      deckLib.buildCard(u, job, { wishlisted: rel.wishlisted.has(u.id), contact: rel.shortlisted.has(u.id) }),
+    );
+  };
 
   if (req.query.sort !== "newest") {
     // Ranking needs scores for the whole filtered set, so score a window of
@@ -154,7 +176,7 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
     const now = Date.now();
     const ranked = users
       .map((u) => {
-        const card = cardWithMatch(u, postings);
+        const card = deckLib.buildCard(u, job);
         const key = rankKey({
           stale: isStale(u.candidateProfile, now),
           score: card.matchScore,
@@ -162,31 +184,24 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
           createdAt: u.createdAt,
           id: u.id,
         });
-        return { card, key };
+        return { user: u, key };
       })
       .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
     const remaining = cursor ? ranked.filter((r) => r.key < cursor) : ranked;
     const page = remaining.slice(0, limit);
-    return res.json({
-      candidates: page.map((r) => r.card),
-      nextCursor: page.length ? page[page.length - 1].key : null,
-      hasMore: remaining.length > limit,
-    });
+    const cards = await toCards(page.map((r) => r.user));
+    return respond(cards, page.length ? page[page.length - 1].key : null, remaining.length > page.length);
   }
 
   const users = await prisma.user.findMany({
     where,
-    orderBy: newestFirst,
-    take: limit,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: { candidateProfile: true },
   });
-
-  res.json({
-    candidates: users.map((u) => cardWithMatch(u, postings)),
-    nextCursor: users.length ? users[users.length - 1].id : null,
-    hasMore: users.length === limit,
-  });
+  const page = users.slice(0, limit);
+  respond(await toCards(page), page.length ? page[page.length - 1].id : null, users.length > limit);
 });
 
 // GET /candidates/me/profile -- the signed-in candidate's own hiring profile.
@@ -217,6 +232,9 @@ router.put("/me/profile", requireRole("candidate"), async (req, res) => {
     update: data,
   });
   res.json(toCandidateProfile(profile));
+  // Saving the form finishes onboarding (the app marks the account complete
+  // right after), so the candidate counts as live for saved-search alerts.
+  fireAlerts(req.user.id, { assumeComplete: true });
 });
 
 // POST /candidates/me/active -- "I'm still looking": restarts the 15-day ring.
@@ -244,61 +262,68 @@ router.put("/me/preferences", requireRole("candidate"), async (req, res) => {
   if (!existing) return res.status(404).json({ error: "No candidate profile yet." });
   const profile = await prisma.candidateProfile.update({ where: { userId: req.user.id }, data });
   res.json(toCandidateProfile(profile));
+  fireAlerts(req.user.id);
 });
 
 // GET /candidates/me/stats -- the candidate's "who looked at me" numbers.
 //
 // A shortlist on its own is anonymous: it only counts towards hiddenCount.
-// The recruiter's company is named in shortlistedBy once they have contacted
-// the candidate, i.e. there is an Opportunity between them.
+// A company is named in shortlistedBy once it has contacted the candidate
+// (a message from the company, an interview or a task).
 router.get("/me/stats", requireRole("candidate"), async (req, res) => {
-  const swipes = await prisma.swipe.findMany({
-    where: { candidateId: req.user.id },
-    include: { recruiter: { select: { id: true, name: true, company: true, companyProfile: true } } },
-    orderBy: { updatedAt: "desc" },
-  });
-  const shortlists = swipes.filter((s) => s.state === "shortlist");
+  const candidateId = req.user.id;
+  const [viewedCount, wishlistedCount, shortlists, fromCompany, interviews, tasks] = await Promise.all([
+    prisma.candidateSwipe.count({ where: { candidateId } }),
+    prisma.wishlistEntry.count({ where: { candidateId } }),
+    prisma.candidateSwipe.findMany({
+      where: { candidateId, action: "right" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: {
+        recruiter: { select: { id: true, name: true, company: true, companyProfile: true } },
+        jobPosting: { select: { title: true, location: true } },
+      },
+    }),
+    // Messages the company itself sent (a candidate can only write after being
+    // contacted, and their own messages are not "contact").
+    prisma.chatMessage.findMany({
+      where: { candidateId, NOT: { senderId: candidateId } },
+      distinct: ["companyId"],
+      select: { companyId: true },
+    }),
+    prisma.interview.findMany({ where: { candidateId }, distinct: ["companyId"], select: { companyId: true } }),
+    prisma.hiringTask.findMany({ where: { candidateId }, distinct: ["companyId"], select: { companyId: true } }),
+  ]);
 
-  const opportunities = shortlists.length
-    ? await prisma.opportunity.findMany({
-        where: { candidateId: req.user.id, recruiterId: { in: shortlists.map((s) => s.recruiterId) } },
-        include: { jobPosting: { select: { location: true } } },
-        orderBy: { updatedAt: "desc" },
-      })
-    : [];
-  // Most recently touched opportunity per recruiter.
-  const latestByRecruiter = new Map();
-  for (const o of opportunities) if (!latestByRecruiter.has(o.recruiterId)) latestByRecruiter.set(o.recruiterId, o);
+  const contacted = new Set([...fromCompany, ...interviews, ...tasks].map((r) => r.companyId));
 
   const shortlistedBy = [];
-  let hiddenCount = 0;
+  const hidden = new Set();
   for (const swipe of shortlists) {
-    const opportunity = latestByRecruiter.get(swipe.recruiterId);
-    if (!opportunity) {
-      hiddenCount += 1;
+    if (!contacted.has(swipe.recruiterId)) {
+      hidden.add(swipe.recruiterId);
       continue;
     }
     const company = swipe.recruiter.companyProfile;
     shortlistedBy.push({
-      id: opportunity.id,
+      id: swipe.id,
       recruiterId: swipe.recruiterId,
-      ...(company ? { companyId: company.id } : {}),
+      companyId: swipe.recruiterId,
       companyName: company?.name || swipe.recruiter.company || "Hiring company",
       industry: company?.industry ?? "",
-      hiringFor: opportunity.role || "",
-      location: opportunity.jobPosting?.location || company?.location || "",
+      hiringFor: swipe.jobPosting?.title || "",
+      location: swipe.jobPosting?.location || company?.location || "",
       verified: company?.verificationStatus === "verified",
       logoUrl: company?.logoUrl ?? "",
-      stage: opportunity.status,
-      date: swipe.updatedAt.toISOString(),
+      stage: swipe.stage,
+      date: swipe.createdAt.toISOString(),
     });
   }
 
   res.json({
-    viewedCount: swipes.length,
-    wishlistedCount: swipes.filter((s) => s.state === "wishlist").length,
+    viewedCount,
+    wishlistedCount,
     shortlistedCount: shortlists.length,
-    hiddenCount,
+    hiddenCount: hidden.size,
     shortlistedBy,
   });
 });
@@ -350,8 +375,15 @@ router.get("/:id", requireRole("recruiter"), async (req, res) => {
     include: { candidateProfile: true },
   });
   if (!user) return res.status(404).json({ error: "Candidate not found." });
-  const postings = await postingsToMatch(req.user.id, str(req.query.jobId, 100));
-  res.json(cardWithMatch(user, postings));
+  const jobId = str(req.query.jobId, 100);
+  const job = jobId
+    ? await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.id } })
+    : await prisma.jobPosting.findFirst({
+        where: { recruiterId: req.user.id, isOpen: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+  const rel = await deckLib.relationsFor(req.user.id, [user.id]);
+  res.json(deckLib.buildCard(user, job, { wishlisted: rel.wishlisted.has(user.id), contact: rel.shortlisted.has(user.id) }));
 });
 
 module.exports = router;

@@ -5,10 +5,12 @@ const { notify } = require("../lib/notify");
 const { normalizeSkills } = require("../lib/derive");
 const { matchScore } = require("../lib/matching");
 const { str, num, int, bool, strList, requireRole } = require("../lib/validate");
+const { FieldError } = require("../lib/candidateProfile");
 const {
   toJobPosting,
   toOpportunity,
   toCandidate,
+  jobStatus,
   OPPORTUNITY_INCLUDE,
   POSTING_INCLUDE,
 } = require("../lib/serializers");
@@ -16,21 +18,140 @@ const {
 const router = express.Router();
 router.use(requireAuth);
 
-function postingData(b) {
-  const skills = strList(b.skills);
-  return {
-    title: str(b.title, 200),
-    description: str(b.description, 8000),
+const MAX_ACTIVE_JOBS = 25;
+const ACTIVE_JOBS_ERROR = "You can have up to 25 active jobs. Close an old one first.";
+const STATUSES = ["open", "paused", "closed"];
+const WORK_MODES = ["onsite", "hybrid", "remote"];
+const JOB_TYPES = ["full-time", "part-time", "internship", "contract"];
+
+function fieldError(res, err) {
+  return res.status(400).json({ error: err.message, field: err.field });
+}
+
+function optionalYears(value, field, label) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 50) throw new FieldError(field, `Enter years between 0 and 50 for ${label}`);
+  return n;
+}
+
+function lpa(value, field, { required = false } = {}) {
+  if (value === undefined || value === null || value === "") {
+    if (required) throw new FieldError(field, "Enter the maximum salary you can offer");
+    return 0;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 1000) throw new FieldError(field, "Enter a valid salary");
+  if (required && n <= 0) throw new FieldError(field, "Enter the maximum salary you can offer");
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Validates a job form body (create and full edit). Returns the Prisma data
+ * object; `status`/`isOpen` are included only when the body carries one.
+ * @throws {FieldError}
+ */
+function parseJobBody(b, prefix = "") {
+  const body = b && typeof b === "object" ? b : {};
+  const f = (name) => `${prefix}${name}`;
+
+  const title = str(body.title, 200);
+  if (!title) throw new FieldError(f("title"), "A job title is required.");
+  const skills = strList(body.skills, 30);
+  if (skills.length === 0) throw new FieldError(f("skills"), "Add at least one skill");
+
+  const salaryMaxLpa = lpa(body.salaryMaxLpa, f("salaryMaxLpa"), { required: true });
+  const salaryMinLpa = lpa(body.salaryMinLpa, f("salaryMinLpa"));
+  if (salaryMinLpa > salaryMaxLpa) throw new FieldError(f("salaryMinLpa"), "Minimum salary cannot be more than maximum salary");
+
+  const minExperienceYears = optionalYears(body.minExperienceYears, f("minExperienceYears"), "minimum experience") ?? 0;
+  const maxExperienceYears = optionalYears(body.maxExperienceYears, f("maxExperienceYears"), "maximum experience");
+  if (maxExperienceYears !== null && maxExperienceYears < minExperienceYears) {
+    throw new FieldError(f("minExperienceYears"), "Minimum experience cannot be more than maximum experience");
+  }
+
+  let openings = 1;
+  if (body.openings !== undefined && body.openings !== null && body.openings !== "") {
+    openings = Number(body.openings);
+    if (!Number.isInteger(openings) || openings < 1 || openings > 1000) {
+      throw new FieldError(f("openings"), "Openings must be between 1 and 1000");
+    }
+  }
+
+  let workMode = "onsite";
+  if (body.workMode !== undefined && body.workMode !== null && body.workMode !== "") {
+    workMode = str(body.workMode, 20).toLowerCase().replace(/[\s_-]+/g, "");
+    if (!WORK_MODES.includes(workMode)) throw new FieldError(f("workMode"), "Choose on-site, hybrid or remote");
+  }
+
+  let employmentType = "full-time";
+  const rawType = body.employmentType ?? body.jobType;
+  if (rawType !== undefined && rawType !== null && rawType !== "") {
+    employmentType = str(rawType, 30).toLowerCase().replace(/[\s_]+/g, "-");
+    if (!JOB_TYPES.includes(employmentType)) {
+      throw new FieldError(f("employmentType"), "Choose full-time, part-time, internship or contract");
+    }
+  }
+
+  const data = {
+    title,
+    description: str(body.description, 8000),
     skills,
     skillsNormalized: normalizeSkills(skills),
-    location: str(b.location, 200),
-    employmentType: str(b.employmentType, 100),
-    salaryMinLpa: num(b.salaryMinLpa),
-    salaryMaxLpa: num(b.salaryMaxLpa),
-    minExperienceYears: Math.max(0, num(b.minExperienceYears)),
-    isOpen: bool(b.isOpen, true),
+    location: str(body.location, 200),
+    employmentType,
+    workMode,
+    openings,
+    salaryMinLpa,
+    salaryMaxLpa,
+    minExperienceYears,
+    maxExperienceYears,
   };
+
+  if (body.status !== undefined) {
+    const status = str(body.status, 20).toLowerCase();
+    if (!STATUSES.includes(status)) throw new FieldError(f("status"), "Status must be open, paused or closed");
+    data.status = status;
+    data.isOpen = status === "open";
+  } else if (typeof body.isOpen === "boolean") {
+    data.isOpen = body.isOpen;
+    // Closing via the old flag pauses; reopening a closed job reopens it.
+    data.status = body.isOpen ? "open" : "paused";
+  }
+  return data;
 }
+
+// Non-closed postings (open + paused, and legacy isOpen=false rows).
+async function activeJobCount(recruiterId, excludeId) {
+  return prisma.jobPosting.count({
+    where: { recruiterId, status: { not: "closed" }, ...(excludeId ? { id: { not: excludeId } } : {}) },
+  });
+}
+
+// { swiped, shortlisted, interviewing, hired } per job, from CandidateSwipe.
+async function statsFor(jobIds) {
+  const stats = new Map(jobIds.map((id) => [id, { swiped: 0, shortlisted: 0, interviewing: 0, hired: 0 }]));
+  if (!jobIds.length) return stats;
+  const groups = await prisma.candidateSwipe.groupBy({
+    by: ["jobPostingId", "action", "stage"],
+    where: { jobPostingId: { in: jobIds } },
+    _count: { _all: true },
+  });
+  for (const g of groups) {
+    const s = stats.get(g.jobPostingId);
+    if (!s) continue;
+    const n = g._count._all;
+    s.swiped += n;
+    if (g.action === "right") {
+      s.shortlisted += n;
+      if (g.stage === "interview") s.interviewing += n;
+      if (g.stage === "hired") s.hired += n;
+    }
+  }
+  return stats;
+}
+
+const STATUS_ORDER = { open: 0, paused: 1, closed: 2 };
 
 function csv(value) {
   return String(value || "")
@@ -144,7 +265,14 @@ router.get("/mine", requireRole("recruiter"), async (req, res) => {
     _count: { _all: true },
   });
   const countOf = new Map(counts.map((c) => [c.jobPostingId, c._count._all]));
-  res.json({ jobs: postings.map((p) => toJobPosting(p, { applicantsCount: countOf.get(p.id) ?? 0 })) });
+  const stats = await statsFor(postings.map((p) => p.id));
+  // Open first, then paused, then closed; newest first inside each group.
+  const sorted = [...postings].sort(
+    (a, b) => STATUS_ORDER[jobStatus(a)] - STATUS_ORDER[jobStatus(b)] || b.createdAt - a.createdAt,
+  );
+  res.json({
+    jobs: sorted.map((p) => toJobPosting(p, { applicantsCount: countOf.get(p.id) ?? 0, stats: stats.get(p.id) })),
+  });
 });
 
 // GET /jobs/saved -- what this candidate bookmarked: the ids (for the save
@@ -181,13 +309,25 @@ router.delete("/saved/:id", requireRole("candidate"), async (req, res) => {
 
 // POST /jobs -- publish a new posting.
 router.post("/", requireRole("recruiter"), async (req, res) => {
-  const data = postingData(req.body || {});
-  if (!data.title) return res.status(400).json({ error: "A job title is required." });
+  let data;
+  try {
+    data = parseJobBody(req.body);
+  } catch (err) {
+    if (err instanceof FieldError) return fieldError(res, err);
+    throw err;
+  }
+  if (data.status === undefined) {
+    data.status = "open";
+    data.isOpen = true;
+  }
+  if (data.status !== "closed" && (await activeJobCount(req.user.id)) >= MAX_ACTIVE_JOBS) {
+    return res.status(400).json({ error: ACTIVE_JOBS_ERROR });
+  }
   const posting = await prisma.jobPosting.create({
     data: { recruiterId: req.user.id, ...data },
     include: POSTING_INCLUDE,
   });
-  res.status(201).json(toJobPosting(posting));
+  res.status(201).json(toJobPosting(posting, { stats: { swiped: 0, shortlisted: 0, interviewing: 0, hired: 0 } }));
 });
 
 // GET /jobs/:id
@@ -243,21 +383,60 @@ router.get("/:id/applicants", requireRole("recruiter"), async (req, res) => {
   res.json({ job: toJobPosting(full, { applicantsCount: applicants.length }), applicants });
 });
 
-// PUT /jobs/:id -- full edit (keeps createdAt).
+// Moving a closed job back to open/paused counts against the 25-job limit.
+async function reopenBlocked(posting, nextStatus) {
+  if (nextStatus === undefined || nextStatus === "closed") return false;
+  if (jobStatus(posting) !== "closed") return false;
+  return (await activeJobCount(posting.recruiterId, posting.id)) >= MAX_ACTIVE_JOBS;
+}
+
+// PUT /jobs/:id -- full edit (keeps createdAt). The status only changes when
+// the body carries `status` or `isOpen`.
 router.put("/:id", requireRole("recruiter"), async (req, res) => {
-  if (!(await ownPosting(req, res))) return;
-  const data = postingData(req.body || {});
-  if (!data.title) return res.status(400).json({ error: "A job title is required." });
+  const existing = await ownPosting(req, res);
+  if (!existing) return;
+  let data;
+  try {
+    data = parseJobBody(req.body);
+  } catch (err) {
+    if (err instanceof FieldError) return fieldError(res, err);
+    throw err;
+  }
+  if (await reopenBlocked(existing, data.status)) return res.status(400).json({ error: ACTIVE_JOBS_ERROR });
   const posting = await prisma.jobPosting.update({ where: { id: req.params.id }, data, include: POSTING_INCLUDE });
-  res.json(toJobPosting(posting));
+  const stats = await statsFor([posting.id]);
+  res.json(toJobPosting(posting, { stats: stats.get(posting.id) }));
 });
 
-// PATCH /jobs/:id { isOpen }
-router.patch("/:id", requireRole("recruiter"), async (req, res) => {
-  if (!(await ownPosting(req, res))) return;
+// PATCH /jobs/:id/status { status: open | paused | closed } -> { job }
+router.patch("/:id/status", requireRole("recruiter"), async (req, res) => {
+  const status = str(req.body?.status, 20).toLowerCase();
+  if (!STATUSES.includes(status)) {
+    return res.status(400).json({ error: "Status must be open, paused or closed.", field: "status" });
+  }
+  const existing = await ownPosting(req, res);
+  if (!existing) return;
+  if (await reopenBlocked(existing, status)) return res.status(400).json({ error: ACTIVE_JOBS_ERROR });
   const posting = await prisma.jobPosting.update({
     where: { id: req.params.id },
-    data: { isOpen: bool(req.body?.isOpen, true) },
+    data: { status, isOpen: status === "open" },
+    include: POSTING_INCLUDE,
+  });
+  const stats = await statsFor([posting.id]);
+  res.json({ job: toJobPosting(posting, { stats: stats.get(posting.id) }) });
+});
+
+// PATCH /jobs/:id { isOpen } -- the older toggle; keeps `status` in sync
+// (false pauses, true reopens). A closed job stays closed when told isOpen=false.
+router.patch("/:id", requireRole("recruiter"), async (req, res) => {
+  const existing = await ownPosting(req, res);
+  if (!existing) return;
+  const isOpen = bool(req.body?.isOpen, true);
+  const status = isOpen ? "open" : jobStatus(existing) === "closed" ? "closed" : "paused";
+  if (await reopenBlocked(existing, status)) return res.status(400).json({ error: ACTIVE_JOBS_ERROR });
+  const posting = await prisma.jobPosting.update({
+    where: { id: req.params.id },
+    data: { isOpen, status },
     include: POSTING_INCLUDE,
   });
   res.json(toJobPosting(posting));

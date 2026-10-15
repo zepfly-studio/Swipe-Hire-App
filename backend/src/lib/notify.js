@@ -12,12 +12,13 @@ const { emailConfigured, sendNotificationEmail } = require("./mailer");
 
 /**
  * @param userId  who to tell
- * @param event   { title, body, type, opportunityId, inbox, email: boolean | { subject, attachments } }
+ * @param event   { title, body, type, opportunityId, link, inbox, email: boolean | { subject, attachments } }
+ *                `link` is the in-app route the notification opens, e.g. "/messages?with=<id>".
  *                `inbox: false` skips the in-app inbox (chat messages only
  *                move the unread badge, they don't fill the bell).
  * @returns the saved inbox row, or null when none was saved
  */
-async function notify(userId, { title, body = "", type = "info", opportunityId = null, email = false, inbox = true } = {}) {
+async function notify(userId, { title, body = "", type = "info", opportunityId = null, link = "", email = false, inbox = true } = {}) {
   if (!userId || !title) return null;
 
   let user;
@@ -28,7 +29,7 @@ async function notify(userId, { title, body = "", type = "info", opportunityId =
       select: { fcmToken: true, email: true, emailNotifications: true },
     });
     if (!user) return null;
-    if (inbox) row = await prisma.notification.create({ data: { userId, type, title, body, opportunityId } });
+    if (inbox) row = await prisma.notification.create({ data: { userId, type, title, body, opportunityId, link } });
   } catch (err) {
     console.error(`[notify] could not save notification for ${userId}:`, err.message);
     return null;
@@ -38,7 +39,7 @@ async function notify(userId, { title, body = "", type = "info", opportunityId =
     await sendPush(user.fcmToken, {
       title,
       body,
-      data: { type, opportunityId: opportunityId || "", notificationId: row ? row.id : "" },
+      data: { type, opportunityId: opportunityId || "", link: link || "", notificationId: row ? row.id : "" },
     });
   } catch (err) {
     console.error(`[notify] push failed for ${userId}:`, err.message);

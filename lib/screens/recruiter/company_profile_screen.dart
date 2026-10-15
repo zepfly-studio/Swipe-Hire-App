@@ -1,25 +1,25 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../../models/company.dart';
+
+import '../../models/hiring_company.dart';
 import '../../services/api_client.dart';
 import '../../services/cloudinary_service.dart';
 import '../../services/company_service.dart';
 import '../../services/error_reporter.dart';
+import '../../services/hiring_service.dart';
 import '../../services/recruiter_profile_service.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/animated_background.dart';
 import '../../widgets/app_toast.dart';
-import '../../widgets/candidate_card_face.dart';
-import '../../widgets/fade_in_up.dart';
-import '../../widgets/section_card.dart';
+import '../../widgets/candidate_card_face.dart' show InitialsAvatar;
+import '../../widgets/inputs/form_blocks.dart';
+import '../../widgets/inputs/location_field.dart';
+import 'company_profile_form.dart';
+import 'onboarding/company_onboarding_form.dart' show kCompanySizes, kIndustries, canonicalCompanySize;
+import 'onboarding/company_onboarding_screen.dart';
 
-const _sizes = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
-
-/// The recruiter's company page: what candidates see when they tap the
-/// company name on a job. A website on the same domain as the recruiter's
-/// work email verifies the company automatically; otherwise they can ask for
-/// a manual review.
+/// The company profile (spec C7): logo, about, contact and links, with an
+/// "unsaved changes" bar. Candidates you shortlist see these details.
 class CompanyProfileScreen extends StatefulWidget {
   const CompanyProfileScreen({super.key});
 
@@ -28,19 +28,25 @@ class CompanyProfileScreen extends StatefulWidget {
 }
 
 class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _website = TextEditingController();
-  final _industry = TextEditingController();
-  final _location = TextEditingController();
+  final _founded = TextEditingController();
   final _about = TextEditingController();
+  final _website = TextEditingController();
+  final _linkedin = TextEditingController();
+  final _phone = TextEditingController();
+  final _email = TextEditingController();
+  final _city = TextEditingController();
+  final _address = TextEditingController();
 
-  CompanyProfile? _saved;
-  String _size = '';
-  String _logoUrl = '';
+  CompanyProfileForm _form = CompanyProfileForm();
+  CompanyProfileForm _saved = CompanyProfileForm();
+  HiringCompany? _company;
+  Map<String, String> _errors = {};
   bool _loading = true;
   bool _saving = false;
   bool _uploading = false;
+
+  List<TextEditingController> get _all => [_name, _founded, _about, _website, _linkedin, _phone, _email, _city, _address];
 
   @override
   void initState() {
@@ -50,96 +56,189 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
 
   @override
   void dispose() {
-    _name.dispose();
-    _website.dispose();
-    _industry.dispose();
-    _location.dispose();
-    _about.dispose();
+    for (final c in _all) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  CompanyProfileForm _fromCompany(HiringCompany c) => CompanyProfileForm(
+        name: c.name,
+        industry: kIndustries.contains(c.industry) ? c.industry : '',
+        size: canonicalCompanySize(c.size),
+        foundedYear: c.foundedYear?.toString() ?? '',
+        about: c.about,
+        website: c.website,
+        linkedin: c.linkedin,
+        phone: c.phone,
+        contactEmail: c.contactEmail,
+        location: c.location,
+        address: c.address,
+      );
+
+  void _apply(CompanyProfileForm f) {
+    _name.text = f.name;
+    _founded.text = f.foundedYear;
+    _about.text = f.about;
+    _website.text = f.website;
+    _linkedin.text = f.linkedin;
+    _phone.text = f.phone;
+    _email.text = f.contactEmail;
+    _city.text = f.location;
+    _address.text = f.address;
+    _form = f.copy();
+  }
+
+  void _syncFromControllers() {
+    _form
+      ..name = _name.text
+      ..foundedYear = _founded.text
+      ..about = _about.text
+      ..website = _website.text
+      ..linkedin = _linkedin.text
+      ..phone = _phone.text
+      ..contactEmail = _email.text
+      ..location = _city.text
+      ..address = _address.text;
+  }
+
+  bool get _dirty {
+    _syncFromControllers();
+    return !_form.sameAs(_saved);
   }
 
   Future<void> _load() async {
     try {
-      final company = await CompanyService.instance.fetchMine();
+      final res = await HiringService.instance.fetchCompany();
       if (!mounted) return;
-      if (company != null) {
-        _fill(company);
-      } else {
-        _name.text = RecruiterProfileService.instance.company;
-      }
+      final c = res.company;
+      final f = c != null
+          ? _fromCompany(c)
+          : CompanyProfileForm(name: res.suggestedName.isNotEmpty ? res.suggestedName : RecruiterProfileService.instance.company);
       setState(() {
-        _saved = company;
+        _company = c;
+        _saved = f.copy();
+        _apply(f);
         _loading = false;
       });
-    } catch (e, stackTrace) {
-      ErrorReporter.report(e, stackTrace, reason: 'CompanyProfileScreen: load failed');
+    } catch (e, st) {
+      ErrorReporter.report(e, st, reason: 'CompanyProfileScreen: load failed');
       if (!mounted) return;
       setState(() => _loading = false);
       AppToast.error('Could not load your company', description: 'Check your connection and try again.');
     }
   }
 
-  void _fill(CompanyProfile c) {
-    _name.text = c.name;
-    _website.text = c.website;
-    _industry.text = c.industry;
-    _location.text = c.location;
-    _about.text = c.about;
-    _size = c.size;
-    _logoUrl = c.logoUrl;
+  void _discard() => setState(() {
+        _errors = {};
+        _apply(_saved);
+      });
+
+  Future<void> _save() async {
+    _syncFromControllers();
+    final errors = _form.validate();
+    if (errors.isNotEmpty) {
+      setState(() => _errors = errors);
+      AppToast.warning('Some details need fixing', description: errors.values.first);
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _errors = {};
+    });
+    try {
+      final company = await HiringService.instance.saveCompany(_form.toBody());
+      if (!mounted) return;
+      final f = _fromCompany(company);
+      setState(() {
+        _company = company;
+        _saved = f.copy();
+        _apply(f);
+        _saving = false;
+      });
+      AppToast.success('Company profile saved');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final field = e.body['field'];
+      setState(() {
+        _saving = false;
+        if (field is String && field.isNotEmpty) _errors = {field: e.message};
+      });
+      if (field is! String || field.isEmpty) AppToast.error('Could not save your company', description: e.message);
+    } catch (e, st) {
+      ErrorReporter.report(e, st, reason: 'CompanyProfileScreen: save failed');
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppToast.error('Could not save your company', description: 'Check your connection and try again.');
+    }
   }
 
   Future<void> _pickLogo() async {
     final files = await FilePicker.pickFiles(type: FileType.image);
     final file = files.isEmpty ? null : files.first;
     if (file == null || !mounted) return;
+    final lower = file.name.toLowerCase();
+    if (!(lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') || lower.endsWith('.webp'))) {
+      AppToast.error('Please choose a JPG, PNG or WebP image');
+      return;
+    }
+    final size = file.lengthSync() ?? await file.length() ?? 0;
+    if (size > 3 * 1024 * 1024) {
+      AppToast.error('Image must be under 3 MB');
+      return;
+    }
     setState(() => _uploading = true);
     try {
       final url = await CloudinaryService.instance.uploadPhoto(file);
-      if (mounted) setState(() => _logoUrl = url);
+      final company = await HiringService.instance.saveCompany({'logoUrl': url});
+      if (mounted) {
+        setState(() => _company = company);
+        AppToast.success('Logo updated');
+      }
     } on StateError catch (e) {
       if (mounted) AppToast.error('Could not upload the logo', description: e.message);
-    } catch (e, stackTrace) {
-      ErrorReporter.report(e, stackTrace, reason: 'CompanyProfileScreen: logo upload failed');
+    } on ApiException catch (e) {
+      if (mounted) AppToast.error('Could not save the logo', description: e.message);
+    } catch (e, st) {
+      ErrorReporter.report(e, st, reason: 'CompanyProfileScreen: logo upload failed');
       if (mounted) AppToast.error('Could not upload the logo', description: 'Please try again.');
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
   }
 
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) {
-      AppToast.warning('Some details need fixing', description: 'Check the fields marked in red.');
-      return;
-    }
-    setState(() => _saving = true);
+  Future<void> _removeLogo() async {
+    setState(() => _uploading = true);
     try {
-      final wasVerified = _saved?.isVerified ?? false;
-      final company = await CompanyService.instance.save(CompanyProfile(
-        id: _saved?.id ?? '',
-        name: _name.text.trim(),
-        website: _website.text.trim(),
-        about: _about.text.trim(),
-        industry: _industry.text.trim(),
-        size: _size,
-        location: _location.text.trim(),
-        logoUrl: _logoUrl,
-      ));
-      if (!mounted) return;
-      setState(() => _saved = company);
-      _fill(company);
-      if (company.isVerified && !wasVerified) {
-        AppToast.success('Company verified', description: 'Candidates now see the verified badge next to ${company.name}.');
-      } else {
-        AppToast.success('Company saved', description: 'Candidates see this on your job postings.');
+      final company = await HiringService.instance.saveCompany({'logoUrl': ''});
+      if (mounted) {
+        setState(() => _company = company);
+        AppToast.success('Logo removed');
       }
     } on ApiException catch (e) {
-      if (mounted) AppToast.error('Could not save your company', description: e.message);
-    } catch (e, stackTrace) {
-      ErrorReporter.report(e, stackTrace, reason: 'CompanyProfileScreen: save failed');
-      if (mounted) AppToast.error('Could not save your company', description: 'Check your connection and try again.');
+      if (mounted) AppToast.error(e.message);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _quickEdit() async {
+    final saved = await Navigator.of(context).push<HiringCompany>(
+      MaterialPageRoute(
+        builder: (_) => CompanyOnboardingScreen(
+          edit: true,
+          existing: _company,
+          userName: RecruiterProfileService.instance.name,
+        ),
+      ),
+    );
+    if (saved != null && mounted) {
+      final f = _fromCompany(saved);
+      setState(() {
+        _company = saved;
+        _saved = f.copy();
+        _apply(f);
+      });
     }
   }
 
@@ -159,16 +258,19 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text.trim()), child: const Text('Send request')),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Send request'),
+          ),
         ],
       ),
     );
     controller.dispose();
     if (note == null || !mounted) return;
     try {
-      final company = await CompanyService.instance.requestVerification(note: note);
+      await CompanyService.instance.requestVerification(note: note);
       if (!mounted) return;
-      setState(() => _saved = company);
+      await _load();
       AppToast.info('Request sent', description: 'We will review it and update the badge.');
     } on ApiException catch (e) {
       if (mounted) AppToast.error('Could not send the request', description: e.message);
@@ -177,110 +279,228 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: AnimatedBackdrop(
-        child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 8, 20, 0),
-                child: Row(
+    final dirty = !_loading && _dirty;
+    return PopScope(
+      canPop: !dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final leave = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Discard changes?'),
+            content: const Text('You have unsaved changes.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Keep editing')),
+              TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Discard')),
+            ],
+          ),
+        );
+        if (leave == true && context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bgTop,
+        appBar: AppBar(
+          title: const Text('Company profile'),
+          actions: [
+            if (!_loading && _company != null)
+              TextButton(onPressed: _quickEdit, child: const Text('Edit basics')),
+          ],
+        ),
+        body: SafeArea(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : Stack(
                   children: [
-                    IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.arrow_back_rounded)),
-                    const Text('Company page', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator(color: AppColors.accentAlt))
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                    ListView(
+                      padding: EdgeInsets.fromLTRB(20, 8, 20, dirty ? 100 : 32),
+                      children: [
+                        const Text(
+                          'Candidates you shortlist see these details. A complete profile gets more replies.',
+                          style: TextStyle(color: AppColors.textSecondary, height: 1.4),
+                        ),
+                        const SizedBox(height: 16),
+                        _verificationCard(),
+                        const SizedBox(height: 16),
+                        _logoRow(),
+                        const SizedBox(height: 20),
+                        const _SectionTitle('About the company'),
+                        FormFieldBlock(
+                          label: 'Company name',
+                          required: true,
+                          error: _errors['name'],
+                          child: TextField(
+                            controller: _name,
+                            maxLength: 100,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: fieldDecoration(
+                              hasError: _errors.containsKey('name'),
+                              prefix: const Icon(Icons.apartment_rounded, size: 20),
+                            ),
+                            onChanged: (_) => setState(() => _errors.remove('name')),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        FormFieldBlock(
+                          label: 'Industry',
+                          child: SelectField(
+                            value: _form.industry,
+                            options: kIndustries,
+                            onChanged: (v) => setState(() => _form.industry = v),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        FormFieldBlock(
+                          label: 'Company size',
+                          child: SelectField(
+                            value: _form.size,
+                            options: kCompanySizes,
+                            onChanged: (v) => setState(() => _form.size = v),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _text('Founded in', _founded, 'foundedYear',
+                            hint: '2018', keyboard: TextInputType.number, icon: Icons.calendar_today_outlined),
+                        const SizedBox(height: 14),
+                        FormFieldBlock(
+                          label: 'Description',
+                          hint: 'What you do, your culture, why people love working with you',
+                          child: TextField(
+                            controller: _about,
+                            maxLines: 5,
+                            maxLength: 1500,
+                            decoration: fieldDecoration(hintText: 'We build…'),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        const _SectionTitle('Contact & links'),
+                        _text('Website', _website, 'website',
+                            hint: 'yourcompany.com', keyboard: TextInputType.url, icon: Icons.language_rounded),
+                        const SizedBox(height: 14),
+                        _text('LinkedIn page', _linkedin, 'linkedin',
+                            hint: 'linkedin.com/company/…', keyboard: TextInputType.url, icon: Icons.link_rounded),
+                        const SizedBox(height: 14),
+                        _text('Contact number', _phone, 'phone',
+                            hint: '+91 98765 43210', keyboard: TextInputType.phone, icon: Icons.phone_outlined),
+                        const SizedBox(height: 14),
+                        _text('Contact email', _email, 'contactEmail',
+                            hint: 'careers@yourcompany.com',
+                            helper: 'For candidates, e.g. careers@…',
+                            keyboard: TextInputType.emailAddress,
+                            icon: Icons.mail_outline_rounded),
+                        const SizedBox(height: 14),
+                        FormFieldBlock(
+                          label: 'City',
+                          required: true,
+                          error: _errors['location'],
+                          child: LocationField(
+                            controller: _city,
+                            hintText: 'Jaipur',
+                            hasError: _errors.containsKey('location'),
+                            onChanged: (_) => setState(() => _errors.remove('location')),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _text('Office address', _address, 'address',
+                            hint: 'Floor, building, area', helper: 'Used for in-person interviews'),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Changing the company name or website resets verification if the company was pending, verified or rejected.',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
+                        ),
+                      ],
+                    ),
+                    if (dirty)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 16,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.textPrimary,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: AppColors.cardShadow(),
+                          ),
+                          child: Row(
                             children: [
-                              FadeInUp(child: _verificationCard()),
-                              const SizedBox(height: 16),
-                              FadeInUp(delay: const Duration(milliseconds: 40), child: _logoRow()),
-                              const SizedBox(height: 16),
-                              _field(_name, 'Company name', Icons.apartment_rounded,
-                                  validator: (v) => (v == null || v.trim().length < 2) ? 'Enter the company name' : null),
-                              const SizedBox(height: 14),
-                              _field(_website, 'Website', Icons.language_rounded,
-                                  keyboardType: TextInputType.url, helper: 'Use your company domain, e.g. acme.com'),
-                              const SizedBox(height: 14),
-                              Row(
-                                children: [
-                                  Expanded(child: _field(_industry, 'Industry', Icons.category_outlined)),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: _field(_location, 'Location', Icons.location_on_outlined)),
-                                ],
+                              const Expanded(
+                                child: Text(
+                                  'You have unsaved changes',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                ),
                               ),
-                              const SizedBox(height: 14),
-                              const Text('Company size', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final s in _sizes)
-                                    ChoiceChip(
-                                      label: Text(s),
-                                      selected: _size == s,
-                                      onSelected: (on) => setState(() => _size = on ? s : ''),
-                                    ),
-                                ],
+                              TextButton(
+                                onPressed: _saving ? null : _discard,
+                                child: const Text('Discard', style: TextStyle(color: Colors.white70)),
                               ),
-                              const SizedBox(height: 14),
-                              _field(_about, 'About the company', Icons.notes_rounded, maxLines: 5),
-                              const SizedBox(height: 24),
                               FilledButton(
-                                onPressed: (_saving || _uploading) ? null : _save,
+                                onPressed: _saving ? null : _save,
                                 style: FilledButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(52),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: AppColors.textPrimary,
+                                  minimumSize: const Size(0, 40),
                                 ),
                                 child: _saving
-                                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                                    : const Text('Save company'),
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Text('Save changes'),
                               ),
                             ],
                           ),
                         ),
                       ),
-              ),
-            ],
-          ),
+                  ],
+                ),
         ),
       ),
     );
   }
 
+  Widget _text(
+    String label,
+    TextEditingController controller,
+    String field, {
+    String? hint,
+    String? helper,
+    TextInputType? keyboard,
+    IconData? icon,
+  }) {
+    return FormFieldBlock(
+      label: label,
+      error: _errors[field],
+      hint: helper,
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboard,
+        decoration: fieldDecoration(
+          hintText: hint,
+          hasError: _errors.containsKey(field),
+          prefix: icon == null ? null : Icon(icon, size: 20),
+        ),
+        onChanged: (_) => setState(() => _errors.remove(field)),
+      ),
+    );
+  }
+
   Widget _verificationCard() {
-    final company = _saved;
-    final (color, icon, title, text) = company == null
-        ? (
-            AppColors.textSecondary,
-            Icons.shield_outlined,
-            'Not verified yet',
-            'Save your company with a website on your work email domain and it is verified automatically.',
-          )
-        : company.isVerified
-            ? (AppColors.info, Icons.verified_rounded, 'Verified', 'Candidates see a verified badge next to ${company.name}.')
-            : company.isPending
-                ? (AppColors.warning, Icons.hourglass_top_rounded, 'Review requested', 'We are reviewing your request. The badge appears once it is approved.')
-                : (
-                    AppColors.textSecondary,
-                    Icons.shield_outlined,
-                    'Not verified yet',
-                    'Your website does not match your work email domain. Fix the website, or ask for a manual review.',
-                  );
-    return SectionCard(
-      title: 'Verification',
-      icon: Icons.verified_user_outlined,
+    final c = _company;
+    if (c == null) return const SizedBox.shrink();
+    final (color, icon, title, text) = c.verified
+        ? (AppColors.info, Icons.verified_rounded, 'Verified company', 'Candidates see a verified badge next to ${c.name}.')
+        : c.isPending
+            ? (AppColors.warning, Icons.hourglass_top_rounded, 'Review requested', 'We are reviewing your request. The badge appears once it is approved.')
+            : (AppColors.textSecondary, Icons.shield_outlined, 'Not verified yet', 'Ask for a manual review to get the verified badge.');
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -293,7 +513,7 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
           ),
           const SizedBox(height: 6),
           Text(text, style: const TextStyle(fontSize: 13, height: 1.4, color: AppColors.textSecondary)),
-          if (company != null && !company.isVerified && !company.isPending) ...[
+          if (!c.verified && !c.isPending) ...[
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _requestReview,
@@ -308,6 +528,7 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
 
   Widget _logoRow() {
     final name = _name.text.trim().isEmpty ? 'Company' : _name.text.trim();
+    final logo = _company?.logoUrl ?? '';
     return Row(
       children: [
         SizedBox(
@@ -315,10 +536,10 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
           height: 72,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: _logoUrl.isEmpty
+            child: logo.isEmpty
                 ? InitialsAvatar(name: name)
                 : CachedNetworkImage(
-                    imageUrl: _logoUrl,
+                    imageUrl: logo,
                     fit: BoxFit.cover,
                     errorWidget: (context, url, error) => InitialsAvatar(name: name),
                   ),
@@ -329,47 +550,40 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              OutlinedButton.icon(
-                onPressed: _uploading ? null : _pickLogo,
-                icon: _uploading
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.image_outlined, size: 18),
-                label: Text(_uploading ? 'Uploading...' : (_logoUrl.isEmpty ? 'Add a logo' : 'Change logo')),
+              const Text('Company logo', style: TextStyle(fontWeight: FontWeight.w700)),
+              const Text(
+                'JPG, PNG or WebP · up to 3 MB · square works best',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               ),
-              if (_logoUrl.isNotEmpty)
-                TextButton(onPressed: () => setState(() => _logoUrl = ''), child: const Text('Remove logo')),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  OutlinedButton(
+                    onPressed: _uploading ? null : _pickLogo,
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38)),
+                    child: _uploading
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Text(logo.isEmpty ? 'Upload' : 'Change'),
+                  ),
+                  if (logo.isNotEmpty)
+                    TextButton(onPressed: _uploading ? null : _removeLogo, child: const Text('Remove')),
+                ],
+              ),
             ],
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _field(
-    TextEditingController controller,
-    String label,
-    IconData icon, {
-    int maxLines = 1,
-    TextInputType? keyboardType,
-    String? helper,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      onChanged: (_) => setState(() {}),
-      style: const TextStyle(color: AppColors.textPrimary),
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: helper,
-        alignLabelWithHint: maxLines > 1,
-        prefixIcon: Icon(icon, color: AppColors.accentAlt, size: 20),
-        filled: true,
-        fillColor: AppColors.surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-      ),
-    );
-  }
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(text, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      );
 }

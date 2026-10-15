@@ -5,6 +5,7 @@
 const assert = require("node:assert/strict");
 const { describe, it, before, after } = require("node:test");
 const h = require("./helpers");
+const hc = require("./hiring-helpers");
 const { api, signup, prisma } = h;
 
 before(() => h.start());
@@ -47,11 +48,25 @@ async function upload(token, buffer, { name = "resume.pdf", type = "application/
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }
 
+// Phase 2 decks need a posting and swipe credits (and the 30-card page cap),
+// so a recruiter without either gets a generous job and balance on demand.
+const prepared = new Set();
+async function prepare(token) {
+  if (prepared.has(token)) return;
+  prepared.add(token);
+  const me = await api("GET", "/users/me", { token });
+  const rec = { token, uid: me.json.uid, name: me.json.name };
+  const mine = await api("GET", "/jobs/mine", { token });
+  if (mine.json.jobs.length === 0) await h.postJob(rec, { salaryMaxLpa: 1000, salaryMinLpa: 0 });
+  await hc.giveSwipes(rec, 1000);
+}
+
 async function deckIds(token, query = "") {
+  await prepare(token);
   const ids = [];
   let cursor = "";
   for (let i = 0; i < 40; i++) {
-    const page = await api("GET", `/candidates?limit=50${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { token });
+    const page = await api("GET", `/candidates?limit=30${query}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, { token });
     assert.equal(page.status, 200, JSON.stringify(page.json));
     ids.push(...page.json.candidates.map((c) => c.id));
     if (!page.json.hasMore) break;
@@ -145,6 +160,7 @@ describe("candidate profile", () => {
     const tag = `Pv${Date.now() % 100000}`;
     const cand = await h.candidateWithProfile("Privacy Cand", { desiredRole: `${tag} Dev`, college: "IIT Bombay", degree: "B.Tech (CSE)" });
 
+    await prepare(rec.token);
     const list = await api("GET", `/candidates?q=${tag}`, { token: rec.token });
     const card = list.json.candidates.find((c) => c.id === cand.uid);
     assert.ok(card);
@@ -155,10 +171,15 @@ describe("candidate profile", () => {
       assert.equal(c.degree, "B.Tech (CSE)");
       assert.equal(c.college, "IIT Bombay");
     }
-    await api("PUT", `/swipes/${cand.uid}`, { token: rec.token, body: { state: "shortlist" } });
-    const funnel = await api("GET", "/swipes", { token: rec.token });
-    assert.equal("age" in funnel.json.shortlist[0], false);
-    assert.equal("gender" in funnel.json.shortlist[0], false);
+    // Contact details appear only after a right swipe, and only in `contact`.
+    assert.equal("contact" in card, false);
+    const swiped = await hc.swipe(rec, cand.uid, "right");
+    assert.equal(swiped.status, 200, JSON.stringify(swiped.json));
+    assert.equal(swiped.json.contact.email, cand.email);
+    const funnel = await api("GET", "/company/shortlisted", { token: rec.token });
+    const row = funnel.json.candidates[0];
+    for (const key of ["age", "gender", "phone", "email"]) assert.equal(key in row, false, `row leaks ${key}`);
+    assert.equal(row.contact.email, cand.email);
   });
 });
 
@@ -300,48 +321,52 @@ describe("active ring and preferences", () => {
 });
 
 describe("candidate stats", () => {
+  // Rewritten for phase 2: stats now read CandidateSwipe / WishlistEntry and
+  // company contact (chat message from the company, interview or task).
   it("counts views and keeps shortlisters anonymous until they make contact", async () => {
     const cand = await h.candidateWithProfile("Stats Cand");
-    const quiet = await signup("recruiter", "Quiet Rec", { company: "Quiet Co" });
-    const wisher = await signup("recruiter", "Wish Rec");
-    const passer = await signup("recruiter", "Pass Rec");
-    const contacting = await signup("recruiter", "Contact Rec", { company: "Reveal Co" });
+    const { rec: quiet } = await hc.recruiterWithJob("Quiet Rec", { signupOptions: { company: "Quiet Co" } });
+    const { rec: wisher } = await hc.recruiterWithJob("Wish Rec");
+    const { rec: passer } = await hc.recruiterWithJob("Pass Rec");
+    const { rec: contacting } = await hc.recruiterWithJob("Contact Rec", {
+      signupOptions: { company: "Reveal Co" },
+      job: { title: "Flutter Developer", location: "Pune" },
+    });
 
     const empty = await api("GET", "/candidates/me/stats", { token: cand.token });
     assert.deepEqual(empty.json, { viewedCount: 0, wishlistedCount: 0, shortlistedCount: 0, hiddenCount: 0, shortlistedBy: [] });
 
-    await api("PUT", `/swipes/${cand.uid}`, { token: quiet.token, body: { state: "shortlist" } });
-    await api("PUT", `/swipes/${cand.uid}`, { token: wisher.token, body: { state: "wishlist" } });
-    await api("PUT", `/swipes/${cand.uid}`, { token: passer.token, body: { state: "rejected" } });
+    assert.equal((await hc.swipe(quiet, cand.uid, "right")).status, 200);
+    assert.equal((await api("PUT", `/company/wishlist/${cand.uid}`, { token: wisher.token, body: { wishlisted: true } })).status, 200);
+    assert.equal((await hc.swipe(passer, cand.uid, "left")).status, 200);
 
     const anon = await api("GET", "/candidates/me/stats", { token: cand.token });
     assert.equal(anon.status, 200, JSON.stringify(anon.json));
-    assert.equal(anon.json.viewedCount, 3);
+    assert.equal(anon.json.viewedCount, 2);
     assert.equal(anon.json.wishlistedCount, 1);
     assert.equal(anon.json.shortlistedCount, 1);
     assert.equal(anon.json.hiddenCount, 1);
     assert.deepEqual(anon.json.shortlistedBy, [], "an uncontacted shortlist names nobody");
     assert.equal(JSON.stringify(anon.json).includes("Quiet Co"), false);
 
-    // A recruiter who shortlists AND opens an opportunity is revealed.
+    // A recruiter who shortlists AND contacts the candidate is revealed.
     await api("PUT", "/company/me", {
       token: contacting.token,
       body: { name: "Reveal Co", industry: "IT / Software", location: "Pune", website: "https://reveal.example" },
     });
-    await api("PUT", `/swipes/${cand.uid}`, { token: contacting.token, body: { state: "shortlist" } });
-    const opp = await api("POST", "/opportunities", {
-      token: contacting.token,
-      body: { candidateUid: cand.uid, role: "Flutter Developer", status: "shortlisted" },
+    assert.equal((await hc.swipe(contacting, cand.uid, "right")).status, 200);
+    await prisma.chatMessage.create({
+      data: { companyId: contacting.uid, candidateId: cand.uid, senderId: contacting.uid, text: "Hello!" },
     });
-    assert.equal(opp.status, 201, JSON.stringify(opp.json));
 
     const revealed = await api("GET", "/candidates/me/stats", { token: cand.token });
-    assert.equal(revealed.json.viewedCount, 4);
+    assert.equal(revealed.json.viewedCount, 3);
     assert.equal(revealed.json.shortlistedCount, 2);
     assert.equal(revealed.json.hiddenCount, 1, "the quiet recruiter is still hidden");
     assert.equal(revealed.json.shortlistedBy.length, 1);
     const entry = revealed.json.shortlistedBy[0];
     assert.equal(entry.recruiterId, contacting.uid);
+    assert.equal(entry.companyId, contacting.uid);
     assert.equal(entry.companyName, "Reveal Co");
     assert.equal(entry.industry, "IT / Software");
     assert.equal(entry.hiringFor, "Flutter Developer");
@@ -349,7 +374,6 @@ describe("candidate stats", () => {
     assert.equal(entry.verified, false);
     assert.equal(entry.stage, "shortlisted");
     assert.equal(typeof entry.id, "string");
-    assert.equal(typeof entry.companyId, "string");
     assert.ok(!Number.isNaN(Date.parse(entry.date)));
 
     assert.equal((await api("GET", "/candidates/me/stats", { token: quiet.token })).status, 403);
@@ -359,13 +383,14 @@ describe("candidate stats", () => {
 describe("deck ranking", () => {
   it("puts stale profiles last, boosts new sign-ups, and pages through all of it", async () => {
     const rec = await signup("recruiter", "Rank Rec");
+    await hc.giveSwipes(rec, 1000);
     const tag = `Rk${Date.now() % 100000}`;
     const base = { desiredRole: `${tag} Dev`, skills: ["Flutter", "Dart"], experience: "3 years", location: "Delhi", expectedSalaryLpa: 12 };
 
     // 85 against the posting below: skills + experience + salary, wrong city.
     const settled = await h.candidateWithProfile("Settled Cand", base);
     // 78 on its own, but under a week old so +10 puts it ahead of the 85.
-    const fresh = await h.candidateWithProfile("Fresh Cand", { ...base, experience: "1 year", location: "Pune", expectedSalaryLpa: 40 });
+    const fresh = await h.candidateWithProfile("Fresh Cand", { ...base, experience: "1 year", location: "Pune", expectedSalaryLpa: 40, salaryNegotiable: true });
     // A perfect 100 whose "still looking" ring ran out: goes last anyway.
     const stale = await h.candidateWithProfile("Stale Cand", { ...base, location: "Pune" });
     const hidden = await h.candidateWithProfile("Hidden Cand", { ...base, location: "Pune" });
@@ -406,7 +431,8 @@ describe("deck ranking", () => {
     assert.ok(!newest.json.candidates.some((c) => c.id === hidden.uid));
   });
 
-  it("ranks by freshness and newest when the recruiter has no posting", async () => {
+  // Adapted for phase 2: with no posting there is no deck at all (NO_JOB).
+  it("has no deck without a posting, and ranks by freshness then newest with one", async () => {
     const rec = await signup("recruiter", "No Posting Rec");
     const tag = `Np${Date.now() % 100000}`;
     const active = await h.candidateWithProfile("Active Ring", { desiredRole: `${tag} Dev` });
@@ -415,8 +441,13 @@ describe("deck ranking", () => {
     await prisma.candidateProfile.update({ where: { userId: lapsed.uid }, data: { activeAt: new Date(Date.now() - 30 * DAY) } });
     await prisma.user.update({ where: { id: lapsed.uid }, data: { createdAt: new Date(Date.now() + 1000) } });
 
+    const none = await api("GET", `/candidates?limit=50&q=${tag}`, { token: rec.token });
+    assert.equal(none.status, 403);
+    assert.equal(none.json.code, "NO_JOB");
+
+    await h.postJob(rec, { salaryMaxLpa: 1000, salaryMinLpa: 0 });
+    await hc.giveSwipes(rec, 1000);
     const res = await api("GET", `/candidates?limit=50&q=${tag}`, { token: rec.token });
     assert.deepEqual(res.json.candidates.map((c) => c.id), [active.uid, lapsed.uid]);
-    assert.equal(res.json.candidates[0].matchScore, null);
   });
 });

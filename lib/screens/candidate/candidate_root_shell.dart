@@ -6,17 +6,20 @@ import '../../services/candidate_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/fade_in_up.dart';
-import 'candidate_applications_screen.dart';
+import '../../utils/app_nav.dart';
+import '../interviews/interviews_screen.dart';
+import '../messages/messages_screen.dart';
+import '../tasks/tasks_screen.dart';
 import 'candidate_home_screen.dart';
 import 'candidate_profile_screen.dart';
 import 'onboarding/candidate_onboarding_screen.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/notification_bell.dart';
 
-/// Bottom-nav shell for a candidate account: Home, Activity (companies'
-/// messages, tasks and interviews) and Profile. Mirrors the recruiter's
-/// [RootShell] pattern -- an IndexedStack keeps each tab's scroll position
-/// alive while switching.
+/// Bottom-nav shell for a candidate account (tab order is [AppNav]'s
+/// candidate tabs): Home, Messages (unread badge), Tasks, Interviews and
+/// Profile. An IndexedStack keeps each tab's state alive while switching;
+/// the pair screens poll only while their tab is the visible one.
 class CandidateRootShell extends StatefulWidget {
   final AppUser user;
   const CandidateRootShell({super.key, required this.user});
@@ -26,13 +29,32 @@ class CandidateRootShell extends StatefulWidget {
 }
 
 class _CandidateRootShellState extends State<CandidateRootShell> {
-  int _index = 0;
+  int _index = AppNav.candidateHome;
   late Future<CandidateProfile?> _profileFuture;
 
   @override
   void initState() {
     super.initState();
     _profileFuture = CandidateProfileService.instance.fetch(widget.user.uid);
+    AppNav.candidateTab.addListener(_onTabRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onTabRequest());
+  }
+
+  @override
+  void dispose() {
+    AppNav.candidateTab.removeListener(_onTabRequest);
+    super.dispose();
+  }
+
+  /// A notification tap / "Message" button asked for a tab: show it, then
+  /// reset the request.
+  void _onTabRequest() {
+    final requested = AppNav.candidateTab.value;
+    if (requested == null || !mounted) return;
+    AppNav.candidateTab.value = null;
+    if (requested >= AppNav.candidateHome && requested <= AppNav.candidateProfile) {
+      setState(() => _index = requested);
+    }
   }
 
   void _goTo(int index) => setState(() => _index = index);
@@ -89,7 +111,9 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
                     onProfileChanged: _onProfileChanged,
                     onEditProfile: () => _editProfile(profile),
                   ),
-                  CandidateApplicationsScreen(user: widget.user),
+                  const MessagesScreen(isCompany: false),
+                  const TasksScreen(isCompany: false),
+                  const InterviewsScreen(isCompany: false),
                   CandidateProfileScreen(
                     user: widget.user,
                     profile: profile,
@@ -131,9 +155,19 @@ class _CandidateRootShellState extends State<CandidateRootShell> {
               label: 'Home',
             ),
             NavigationDestination(
-              icon: UnreadChatIcon(icon: Icons.forum_outlined),
-              selectedIcon: UnreadChatIcon(icon: Icons.forum_rounded),
-              label: 'Activity',
+              icon: UnreadChatIcon(icon: Icons.chat_bubble_outline_rounded),
+              selectedIcon: UnreadChatIcon(icon: Icons.chat_bubble_rounded),
+              label: 'Messages',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.assignment_outlined),
+              selectedIcon: Icon(Icons.assignment_rounded),
+              label: 'Tasks',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.event_outlined),
+              selectedIcon: Icon(Icons.event_rounded),
+              label: 'Interviews',
             ),
             NavigationDestination(
               icon: Icon(Icons.person_outline_rounded),

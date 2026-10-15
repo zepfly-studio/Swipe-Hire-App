@@ -7,6 +7,7 @@
 const assert = require("node:assert/strict");
 const { describe, it, before, after } = require("node:test");
 const h = require("./helpers");
+const hc = require("./hiring-helpers");
 const { api, signup, prisma, pushes, emails } = h;
 
 const {
@@ -145,46 +146,42 @@ describe("google sign-in", () => {
 });
 
 describe("recruiter deck, filters and match scores", () => {
+  // Adapted for phase 2: the deck needs a job, is capped by swipe credits and
+  // is de-duplicated through CandidateSwipe (POST /company/swipe), not the old
+  // /swipes table.
   it("lists a finished candidate, keeps roles apart, and remembers swipes per recruiter", async () => {
-    const rec = await signup("recruiter", "Deck Rec");
-    const other = await signup("recruiter", "Other Rec");
+    const { rec } = await hc.recruiterWithJob("Deck Rec");
+    const { rec: other } = await hc.recruiterWithJob("Other Rec");
     const cand = await h.candidateWithProfile("Deck Cand");
+    const q = `&q=${encodeURIComponent("Deck Cand")}`;
+    const deck = (who) => hc.deckAll(who, q);
 
-    const deck = async (token, query = "") => {
-      let all = [];
-      let cursor = "";
-      for (let i = 0; i < 30; i++) {
-        const page = await api("GET", `/candidates?limit=50${query}${cursor ? `&cursor=${cursor}` : ""}`, { token });
-        all = all.concat(page.json.candidates);
-        if (!page.json.hasMore) break;
-        cursor = page.json.nextCursor;
-      }
-      return all;
-    };
-
-    assert.ok((await deck(rec.token)).some((c) => c.id === cand.uid));
+    assert.ok((await deck(rec)).some((c) => c.id === cand.uid));
     assert.equal((await api("GET", "/candidates", { token: cand.token })).status, 403);
     assert.equal((await api("GET", "/candidates/me/profile", { token: rec.token })).status, 403);
 
-    const card = (await deck(rec.token)).find((c) => c.id === cand.uid);
+    const card = (await deck(rec)).find((c) => c.id === cand.uid);
     assert.equal(card.role, "Flutter Developer");
     assert.equal("email" in card, false, "a deck card must not expose contact details");
+    assert.equal("contact" in card, false);
 
-    await api("PUT", `/swipes/${cand.uid}`, { token: rec.token, body: { state: "wishlist" } });
-    assert.ok(!(await deck(rec.token)).some((c) => c.id === cand.uid));
-    assert.ok((await deck(other.token)).some((c) => c.id === cand.uid), "another recruiter still sees them");
+    // Wishlisting keeps them on the deck (it is a flag), swiping removes them.
+    await api("PUT", `/company/wishlist/${cand.uid}`, { token: rec.token, body: { wishlisted: true } });
+    assert.equal((await deck(rec)).find((c) => c.id === cand.uid).wishlisted, true);
 
-    await api("PUT", `/swipes/${cand.uid}`, { token: rec.token, body: { state: "shortlist" } });
-    const funnel = await api("GET", "/swipes", { token: rec.token });
-    assert.equal(funnel.json.wishlist.length, 0);
-    assert.equal(funnel.json.shortlist.length, 1);
+    assert.equal((await hc.swipe(rec, cand.uid, "right")).status, 200);
+    assert.ok(!(await deck(rec)).some((c) => c.id === cand.uid));
+    assert.ok((await deck(other)).some((c) => c.id === cand.uid), "another recruiter still sees them");
 
-    await api("DELETE", `/swipes/${cand.uid}`, { token: rec.token });
-    assert.ok((await deck(rec.token)).some((c) => c.id === cand.uid), "undo brings them back");
+    const list = await api("GET", "/company/shortlisted", { token: rec.token });
+    assert.equal(list.json.candidates.length, 1);
+
+    assert.equal((await api("POST", "/company/swipe/undo", { token: rec.token })).status, 200);
+    assert.ok((await deck(rec)).some((c) => c.id === cand.uid), "undo brings them back");
   });
 
   it("filters the deck by skills, location, experience, CTC and notice period", async () => {
-    const rec = await signup("recruiter", "Filter Rec");
+    const { rec } = await hc.recruiterWithJob("Filter Rec");
     const tag = `Zq${Date.now() % 100000}`;
     const senior = await h.candidateWithProfile("Senior Filter", {
       desiredRole: `${tag} Engineer`, location: "Pune", skills: ["Flutter", "Kotlin"], experience: "6 years", expectedSalaryLpa: 22, noticePeriod: "60 days",
@@ -213,12 +210,13 @@ describe("recruiter deck, filters and match scores", () => {
 
   it("scores candidates against the recruiter's open postings and can rank by it", async () => {
     const rec = await signup("recruiter", "Match Rec");
+    await hc.giveSwipes(rec, 1000);
     const tag = `Mq${Date.now() % 100000}`;
     const strong = await h.candidateWithProfile("Strong Match", {
       desiredRole: `${tag} Dev`, skills: ["Flutter", "Dart"], experience: "3 years", location: "Pune", expectedSalaryLpa: 12,
     });
     const weak = await h.candidateWithProfile("Weak Match", {
-      desiredRole: `${tag} Dev`, skills: ["Cobol"], experience: "Fresher", location: "Delhi", expectedSalaryLpa: 40,
+      desiredRole: `${tag} Dev`, skills: ["Cobol"], experience: "Fresher", location: "Delhi", expectedSalaryLpa: 40, salaryNegotiable: true,
     });
     await h.postJob(rec, { title: "Flutter Developer" });
 
@@ -233,10 +231,11 @@ describe("recruiter deck, filters and match scores", () => {
 
   it("shows the best match first by default, newest first among equals, and pages without gaps", async () => {
     const rec = await signup("recruiter", "Order Rec");
+    await hc.giveSwipes(rec, 1000);
     const tag = `Oq${Date.now() % 100000}`;
     const fit = { desiredRole: `${tag} Dev`, skills: ["Flutter", "Dart"], experience: "3 years", location: "Pune", expectedSalaryLpa: 12 };
     const olderFit = await h.candidateWithProfile("Older Fit", fit);
-    const weak = await h.candidateWithProfile("Weak Fit", { ...fit, skills: ["Cobol"], experience: "Fresher", location: "Delhi", expectedSalaryLpa: 40 });
+    const weak = await h.candidateWithProfile("Weak Fit", { ...fit, skills: ["Cobol"], experience: "Fresher", location: "Delhi", expectedSalaryLpa: 40, salaryNegotiable: true });
     const newerFit = await h.candidateWithProfile("Newer Fit", fit);
     await h.postJob(rec, { title: "Flutter Developer" });
 
@@ -261,7 +260,7 @@ describe("recruiter deck, filters and match scores", () => {
 
     // Swiping someone away mid-paging must not skip the next candidate.
     const first = await api("GET", `/candidates?limit=1&q=${tag}`, { token: rec.token });
-    await api("PUT", `/swipes/${newerFit.uid}`, { token: rec.token, body: { state: "rejected" } });
+    assert.equal((await hc.swipe(rec, newerFit.uid, "left")).status, 200);
     const next = await api("GET", `/candidates?limit=1&q=${tag}&cursor=${encodeURIComponent(first.json.nextCursor)}`, { token: rec.token });
     assert.equal(next.json.candidates[0].id, olderFit.uid);
 
@@ -301,7 +300,7 @@ describe("jobs, filters, recommendations and applicants", () => {
     const rec = await signup("recruiter", "Filter Jobs Rec");
     const tag = `Jq${Date.now() % 100000}`;
     const fit = await h.postJob(rec, { title: `${tag} Flutter Dev`, skills: ["Flutter", "Dart"], location: "Pune", salaryMaxLpa: 20, minExperienceYears: 2 });
-    const remote = await h.postJob(rec, { title: `${tag} Remote QA`, skills: ["Selenium"], location: "Remote", employmentType: "Contract", salaryMaxLpa: 6, minExperienceYears: 0 });
+    const remote = await h.postJob(rec, { title: `${tag} Remote QA`, skills: ["Selenium"], location: "Remote", employmentType: "Contract", salaryMinLpa: 3, salaryMaxLpa: 6, minExperienceYears: 0 });
     const senior = await h.postJob(rec, { title: `${tag} Principal`, skills: ["Flutter"], location: "Pune", salaryMaxLpa: 60, minExperienceYears: 10 });
 
     const cand = await h.candidateWithProfile("Jobs Cand", { skills: ["Flutter", "Dart"], experience: "3 years", location: "Pune", expectedSalaryLpa: 14 });

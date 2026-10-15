@@ -71,6 +71,22 @@ model User {
   swipes                   Swipe[]           @relation("SwipeRecruiter")
   swipedBy                 Swipe[]           @relation("SwipeCandidate")
 
+  // Phase 2/3 (website parity): per-job swipes, wishlist, pair chat,
+  // slot-based interviews, take-home tasks, saved searches, payments.
+  candidateSwipesAsRecruiter CandidateSwipe[] @relation("CSwipeRecruiter")
+  candidateSwipesAsCandidate CandidateSwipe[] @relation("CSwipeCandidate")
+  wishlistAsRecruiter        WishlistEntry[]  @relation("WishRecruiter")
+  wishlistAsCandidate        WishlistEntry[]  @relation("WishCandidate")
+  chatsAsCompany             ChatMessage[]    @relation("ChatCompany")
+  chatsAsCandidate           ChatMessage[]    @relation("ChatCandidate")
+  chatsSent                  ChatMessage[]    @relation("ChatSender")
+  interviewsAsCompany        Interview[]      @relation("InterviewCompany")
+  interviewsAsCandidate      Interview[]      @relation("InterviewCandidate")
+  hiringTasksAsCompany       HiringTask[]     @relation("HTaskCompany")
+  hiringTasksAsCandidate     HiringTask[]     @relation("HTaskCandidate")
+  savedSearches              SavedSearch[]
+  payments                   Payment[]
+
   @@map("users")
 }
 
@@ -134,7 +150,7 @@ model CandidateProfile {
   /// A profile not refreshed for 15 days sinks to the bottom of the deck.
   activeAt             DateTime @default(now())
 
-  updatedAt         DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -158,12 +174,22 @@ model JobPosting {
   minExperienceYears Float    @default(0)
   skillsNormalized   String[] @default([])
   isOpen             Boolean  @default(true)
+  /// "open" | "paused" | "closed". `isOpen` is kept equal to status == "open"
+  /// so the older routes keep working.
+  status             String   @default("open")
+  openings           Int      @default(1)
+  /// "onsite" | "hybrid" | "remote"
+  workMode           String   @default("onsite")
+  maxExperienceYears Float?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  recruiter     User          @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
-  opportunities Opportunity[]
-  savedBy       SavedJob[]
+  recruiter       User             @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  opportunities   Opportunity[]
+  savedBy         SavedJob[]
+  candidateSwipes CandidateSwipe[]
+  interviews      Interview[]
+  hiringTasks     HiringTask[]
 
   @@index([recruiterId, createdAt])
   @@index([isOpen, createdAt])
@@ -323,6 +349,8 @@ model Notification {
   title         String
   body          String    @default("")
   opportunityId String?
+  /// In-app route this notification opens (e.g. "/messages?with=<id>").
+  link          String    @default("")
   readAt        DateTime?
   createdAt     DateTime  @default(now())
 
@@ -350,10 +378,197 @@ model Company {
   verificationStatus String    @default("unverified")
   verificationNote   String    @default("")
   verifiedAt         DateTime?
+  /// Swipe credits: every swipe (left or right) costs one; wishlisting is free.
+  swipesLeft         Int       @default(5)
+  swipesPurchased    Int       @default(0)
+  /// Payment order ids already credited, so a webhook and a verify call can
+  /// never credit the same order twice.
+  creditedOrders     String[]  @default([])
+  foundedYear        Int?
+  contactEmail       String    @default("")
+  linkedin           String    @default("")
+  phone              String    @default("")
+  address            String    @default("")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@map("companies")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2/3: website-parity hiring model. All additive; the older Swipe /
+// Opportunity / Message / Task tables are left untouched.
+// ---------------------------------------------------------------------------
+
+enum PipelineStage {
+  shortlisted
+  contacted
+  task
+  interview
+  hired
+  rejected
+}
+
+/// One recruiter's swipe on one candidate for one job. A right swipe is a
+/// shortlist and carries the pipeline stage and private notes; a left swipe
+/// is a pass. Each (recruiter, candidate, job) can be swiped once.
+model CandidateSwipe {
+  id           String        @id @default(uuid())
+  recruiterId  String
+  candidateId  String
+  jobPostingId String
+  /// "left" (pass) | "right" (shortlist)
+  action       String
+  stage        PipelineStage @default(shortlisted)
+  notes        String        @default("")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  recruiter  User       @relation("CSwipeRecruiter", fields: [recruiterId], references: [id], onDelete: Cascade)
+  candidate  User       @relation("CSwipeCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+
+  @@unique([recruiterId, candidateId, jobPostingId])
+  @@index([recruiterId, createdAt])
+  @@index([candidateId, action])
+  @@map("candidate_swipes")
+}
+
+/// Candidates a recruiter saved for later. Free, and independent of jobs.
+model WishlistEntry {
+  recruiterId String
+  candidateId String
+  createdAt   DateTime @default(now())
+
+  recruiter User @relation("WishRecruiter", fields: [recruiterId], references: [id], onDelete: Cascade)
+  candidate User @relation("WishCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@id([recruiterId, candidateId])
+  @@map("wishlist_entries")
+}
+
+/// A chat message between a company and a candidate. One conversation per
+/// (company, candidate) pair, across all jobs. companyId is the hiring
+/// account (the company owner's user id).
+model ChatMessage {
+  id          String    @id @default(uuid())
+  companyId   String
+  candidateId String
+  senderId    String
+  text        String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  company   User @relation("ChatCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  candidate User @relation("ChatCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  sender    User @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, candidateId, createdAt])
+  @@index([candidateId, readAt])
+  @@map("chat_messages")
+}
+
+/// An interview invite with 1-3 proposed times; the candidate picks one.
+model Interview {
+  id            String     @id @default(uuid())
+  companyId     String
+  candidateId   String
+  jobPostingId  String?
+  slots         DateTime[]
+  chosenSlot    DateTime?
+  durationMins  Int        @default(30)
+  /// "video" | "phone" | "in-person"
+  mode          String     @default("video")
+  meetingLink   String     @default("")
+  location      String     @default("")
+  note          String     @default("")
+  /// "proposed" | "confirmed" | "cancelled"
+  status        String     @default("proposed")
+  cancelledById String?
+  cancelReason  String     @default("")
+  /// 0 = none sent, 1 = the day-before reminder went out, 2 = the hour-before one did.
+  remindersSent Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  company    User        @relation("InterviewCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  candidate  User        @relation("InterviewCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  jobPosting JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([candidateId, createdAt])
+  @@map("interviews")
+}
+
+/// A take-home task sent to a shortlisted candidate (live link + GitHub repo
+/// + note before a deadline).
+model HiringTask {
+  id                   String    @id @default(uuid())
+  companyId            String
+  candidateId          String
+  jobPostingId         String?
+  createdById          String?
+  title                String
+  description          String    @default("")
+  briefUrl             String    @default("")
+  dueAt                DateTime
+  /// "assigned" | "submitted" | "cancelled"; "overdue" is computed.
+  status               String    @default("assigned")
+  liveUrl              String    @default("")
+  repoUrl              String    @default("")
+  submissionNote       String    @default("")
+  submittedAt          DateTime?
+  reminderSentAt       DateTime?
+  reviewReminderSentAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  company    User        @relation("HTaskCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  candidate  User        @relation("HTaskCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+  jobPosting JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([candidateId, createdAt])
+  @@map("hiring_tasks")
+}
+
+/// A recruiter's saved deck filter. With alerts on, a candidate who newly
+/// matches triggers one notification (never twice for the same candidate).
+model SavedSearch {
+  id                 String   @id @default(uuid())
+  recruiterId        String
+  name               String
+  /// { location, minExp, maxExp, maxSalary, notice: [], skills: [] }
+  filters            Json
+  alerts             Boolean  @default(true)
+  notifiedCandidates String[] @default([])
+  createdAt          DateTime @default(now())
+
+  recruiter User @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  @@index([recruiterId, createdAt])
+  @@map("saved_searches")
+}
+
+/// A swipe-credit purchase (Razorpay, or "demo" when no keys are set).
+model Payment {
+  id           String   @id @default(uuid())
+  recruiterId  String
+  planId       String
+  amountRupees Int
+  swipes       Int
+  orderId      String   @unique
+  paymentId    String?
+  /// "razorpay" | "demo"
+  mode         String
+  /// "created" | "paid"
+  status       String   @default("created")
+  createdAt    DateTime @default(now())
+
+  recruiter User @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+
+  @@index([recruiterId, createdAt])
+  @@map("payments")
 }
