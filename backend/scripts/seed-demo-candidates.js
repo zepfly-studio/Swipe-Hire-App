@@ -335,7 +335,12 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error("Seed failed:", e.message.split("\n")[0]);
-  process.exit(1);
-});
+// Run as a script; `require`d by seed-demo-via-api.js for the candidate data.
+if (require.main === module) {
+  main().catch((e) => {
+    console.error("Seed failed:", e.message.split("\n")[0]);
+    process.exit(1);
+  });
+}
+
+module.exports = { CANDIDATES, emailFor, photoFor };
