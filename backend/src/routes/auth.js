@@ -67,9 +67,12 @@ async function issueOtp(email, purpose) {
     // Resend's shared test sender (onboarding@resend.dev) can only deliver to
     // the Resend account owner's own inbox and answers 403 for anyone else.
     // In development that shouldn't block testing with other addresses, so
-    // fall back to showing the code in the app. Never applies in production.
+    // fall back to showing the code in the app. In production this only
+    // applies when OTP_DEV_FALLBACK=true is set explicitly (staging/testing a
+    // deployed build before a sending domain is verified in Resend).
     const testSenderRestriction = err.response?.body?.statusCode === 403;
-    if (testSenderRestriction && process.env.NODE_ENV !== "production") {
+    const fallbackAllowed = process.env.NODE_ENV !== "production" || process.env.OTP_DEV_FALLBACK === "true";
+    if (testSenderRestriction && fallbackAllowed) {
       console.warn(`[otp] Resend test sender can't deliver to ${email}; returning the code to the app (dev only).`);
       console.log(`[otp] ${purpose} code for ${email}: ${otp}`);
       return { devOtp: otp };
