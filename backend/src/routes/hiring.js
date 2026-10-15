@@ -283,6 +283,58 @@ router.patch("/pipeline/:swipeId", async (req, res) => {
   res.json({ ok: true, ...(hasStage ? { stage: body.stage } : {}), ...(hasNotes ? { notes: body.notes.trim() } : {}) });
 });
 
+// DELETE /company/shortlisted/:swipeId -> { ok, candidateId, jobId, stage }
+// Takes a candidate out of the shortlist: their swipe for that job is deleted,
+// so they are unswiped again and come back into the swipe deck for that job.
+// The swipe is not refunded (swiping them again costs a credit). Refused when
+// the person is hired or still has a live interview/task for this job, so no
+// scheduled work is left dangling.
+router.delete("/shortlisted/:swipeId", async (req, res) => {
+  const swipe = await prisma.candidateSwipe.findFirst({
+    where: { id: req.params.swipeId, recruiterId: req.user.companyId, action: "right" },
+  });
+  if (!swipe) return res.status(404).json({ error: "This candidate is not in your pipeline" });
+
+  if (swipe.stage === "hired") {
+    return res.status(409).json({ error: "A hired candidate cannot be removed. Move them to another stage first." });
+  }
+
+  const forThisJob = [{ jobPostingId: swipe.jobPostingId }, { jobPostingId: null }];
+  const now = new Date();
+  const [interview, task] = await Promise.all([
+    prisma.interview.findFirst({
+      where: {
+        companyId: req.user.companyId,
+        candidateId: swipe.candidateId,
+        OR: forThisJob,
+        AND: [
+          {
+            OR: [{ status: "proposed" }, { status: "confirmed", chosenSlot: { gt: now } }],
+          },
+        ],
+      },
+      select: { id: true },
+    }),
+    prisma.hiringTask.findFirst({
+      where: {
+        companyId: req.user.companyId,
+        candidateId: swipe.candidateId,
+        OR: forThisJob,
+        status: "assigned",
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (interview || task) {
+    return res.status(409).json({
+      error: `This candidate still has ${interview ? "an interview" : "a task"} open. Cancel it first, then remove them.`,
+    });
+  }
+
+  await prisma.candidateSwipe.deleteMany({ where: { id: swipe.id, recruiterId: req.user.companyId } });
+  res.json({ ok: true, candidateId: swipe.candidateId, jobId: swipe.jobPostingId, stage: swipe.stage });
+});
+
 // --- saved searches --------------------------------------------------------
 
 router.get("/searches", async (req, res) => {

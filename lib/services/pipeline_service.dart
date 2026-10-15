@@ -3,6 +3,7 @@ import '../models/candidate.dart';
 import '../models/pair/pair_person.dart';
 import '../models/pair/pipeline_models.dart';
 import 'api_client.dart';
+import 'hiring_service.dart';
 import 'polling.dart';
 
 /// The company's shortlisted pipeline (`/company/shortlisted`,
@@ -43,6 +44,15 @@ class PipelineService {
   Future<void> setStage(String swipeId, String stage) async {
     await _api.patch('/company/pipeline/${Uri.encodeComponent(swipeId)}', body: {'stage': stage});
     DataRefresh.instance.bump();
+  }
+
+  /// Takes the candidate out of the shortlist. The swipe is deleted on the
+  /// server, so they are unswiped for that job and return to the swipe deck
+  /// (the swipe that shortlisted them is not refunded).
+  Future<void> removeFromShortlist(String swipeId) async {
+    await _api.delete('/company/shortlisted/${Uri.encodeComponent(swipeId)}');
+    DataRefresh.instance.bump();
+    HiringService.deckRefresh.value++;
   }
 
   Future<void> setNotes(String swipeId, String notes) async {

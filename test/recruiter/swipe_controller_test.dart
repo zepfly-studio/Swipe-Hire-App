@@ -77,6 +77,23 @@ void main() {
       expect(c.viewState, SwipeViewState.noFilterMatch);
     });
 
+    test('a candidate removed from the shortlist comes back: the feed restarts from the top', () async {
+      await start(swipes: 5, ids: ['a']);
+      service.pages.add([]);
+      await c.swipe(SwipeDir.left);
+      await pumpEventQueue();
+      expect(c.viewState, SwipeViewState.seenEveryone);
+      final calls = service.feedCalls.length;
+
+      service.pages.add([card('back', name: 'Person back')]);
+      HiringService.deckRefresh.value++;
+      await pumpEventQueue();
+
+      expect(service.feedCalls.length, calls + 1);
+      expect(c.stack.map((e) => e.id), ['back']);
+      expect(c.viewState, SwipeViewState.ready);
+    });
+
     test('a feed error shows the error state and retry loads again', () async {
       service.feedError = ApiException(409, 'This job is paused or closed. Reopen it to see candidates.');
       await c.init();

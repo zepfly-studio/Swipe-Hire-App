@@ -525,6 +525,81 @@ describe("shortlisted pipeline", () => {
     const foreign = await api("PATCH", `/company/pipeline/${row.swipeId}`, { token: stranger.token, body: { stage: "rejected" } });
     assert.equal(foreign.status, 404);
   });
+
+  it("removing someone from the shortlist puts them back in the swipe deck (no refund)", async () => {
+    const tag = unique();
+    const { rec, job } = await hc.recruiterWithJob("Remove Rec", { job: { title: `${tag} Role` } });
+    const cand = await h.candidateWithProfile(`${tag} Comeback`);
+    const inDeck = async () => (await hc.deckAll(rec, `&jobId=${job.id}&q=${tag}`)).some((c) => c.id === cand.uid);
+    const shortlist = async () => (await api("GET", `/company/shortlisted?jobId=${job.id}`, { token: rec.token })).json.candidates;
+
+    assert.equal(await inDeck(), true);
+    await hc.swipe(rec, cand.uid, "right", job.id);
+    assert.equal(await inDeck(), false, "a shortlisted candidate leaves the deck");
+    const balance = await hc.swipesLeft(rec);
+    const [row] = await shortlist();
+    assert.ok(row && row.swipeId);
+
+    const remove = (swipeId, token = rec.token) => api("DELETE", `/company/shortlisted/${swipeId}`, { token });
+    assert.equal((await remove("00000000-0000-4000-8000-000000000000")).status, 404);
+    const stranger = await signup("recruiter", "Remove Stranger");
+    assert.equal((await remove(row.swipeId, stranger.token)).status, 404, "another company cannot remove it");
+
+    const done = await remove(row.swipeId);
+    assert.equal(done.status, 200, JSON.stringify(done.json));
+    assert.deepEqual(done.json, { ok: true, candidateId: cand.uid, jobId: job.id, stage: "shortlisted" });
+    assert.equal((await shortlist()).length, 0);
+    assert.equal(await inDeck(), true, "back in the swipe deck for that job");
+    assert.equal(await hc.swipesLeft(rec), balance, "the original swipe is not refunded");
+
+    const again = await hc.swipe(rec, cand.uid, "right", job.id);
+    assert.equal(again.status, 200, "they can be shortlisted again");
+    assert.equal(await hc.swipesLeft(rec), balance - 1);
+  });
+
+  it("refuses to remove a hired candidate or one with a live task or interview", async () => {
+    const tag = unique();
+    const { rec, job } = await hc.recruiterWithJob("Remove Guard", { job: { title: `${tag} Role` } });
+    const cand = await h.candidateWithProfile(`${tag} Guarded`);
+    await hc.swipe(rec, cand.uid, "right", job.id);
+    const rowOf = async () => (await api("GET", `/company/shortlisted?jobId=${job.id}`, { token: rec.token })).json.candidates[0];
+    const remove = (swipeId) => api("DELETE", `/company/shortlisted/${swipeId}`, { token: rec.token });
+    const row = await rowOf();
+
+    // A live task blocks removal until it is cancelled.
+    const dueAt = new Date(Date.now() + 3 * 86400000).toISOString();
+    const task = await api("POST", "/tasks", {
+      token: rec.token,
+      body: { candidateId: cand.uid, jobId: job.id, title: "Build it", description: "Do the thing", dueAt },
+    });
+    assert.equal(task.status, 201, JSON.stringify(task.json));
+    const blockedByTask = await remove(row.swipeId);
+    assert.equal(blockedByTask.status, 409);
+    assert.match(blockedByTask.json.error, /task/);
+    await api("POST", `/tasks/${task.json.id}/cancel`, { token: rec.token });
+
+    // So does an interview that is waiting for the candidate.
+    const slots = [new Date(Date.now() + 2 * 86400000).toISOString()];
+    const interview = await api("POST", "/interviews", {
+      token: rec.token,
+      body: { candidateId: cand.uid, jobId: job.id, slots, durationMins: 30, mode: "video" },
+    });
+    assert.equal(interview.status, 201, JSON.stringify(interview.json));
+    const blockedByInterview = await remove(row.swipeId);
+    assert.equal(blockedByInterview.status, 409);
+    assert.match(blockedByInterview.json.error, /interview/);
+    await api("POST", `/interviews/${interview.json.id}/cancel`, { token: rec.token, body: { reason: "plans changed" } });
+
+    // Hired people stay.
+    await api("PATCH", `/company/pipeline/${row.swipeId}`, { token: rec.token, body: { stage: "hired" } });
+    const hired = await remove(row.swipeId);
+    assert.equal(hired.status, 409);
+    assert.match(hired.json.error, /hired/i);
+
+    // Once nothing is open and they are not hired, removal works from any stage.
+    await api("PATCH", `/company/pipeline/${row.swipeId}`, { token: rec.token, body: { stage: "contacted" } });
+    assert.equal((await remove(row.swipeId)).status, 200);
+  });
 });
 
 describe("saved searches and alerts", () => {

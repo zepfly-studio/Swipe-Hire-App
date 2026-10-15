@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -107,7 +108,19 @@ class SwipeController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     HiringService.swipesLeft.removeListener(_onBalance);
+    HiringService.deckRefresh.removeListener(_onDeckRefresh);
     super.dispose();
+  }
+
+  /// A candidate was taken out of the shortlist and is unswiped again:
+  /// restart the feed from the top so they can show up, and top the stack up.
+  void _onDeckRefresh() {
+    if (_disposed || job == null) return;
+    _cursor = null;
+    exhausted = false;
+    feedError = null;
+    notifyListeners();
+    unawaited(_maybeLoadMore());
   }
 
   void _setBalance(int v) {
@@ -164,6 +177,7 @@ class SwipeController extends ChangeNotifier {
       noJob = pick == null;
       loadingJobs = false;
       HiringService.swipesLeft.addListener(_onBalance);
+      HiringService.deckRefresh.addListener(_onDeckRefresh);
       notifyListeners();
       if (pick != null) {
         if (companyId.isNotEmpty) service.rememberJob(companyId, pick.id);

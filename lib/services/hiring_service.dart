@@ -109,6 +109,10 @@ class HiringService {
   /// button). The Swipe screen applies it and sets it back to null.
   static final ValueNotifier<String?> swipeJobRequest = ValueNotifier<String?>(null);
 
+  /// Bumped when a candidate goes back into the swipe deck (removed from the
+  /// shortlist), so a live swipe screen restarts its feed from the top.
+  static final ValueNotifier<int> deckRefresh = ValueNotifier<int>(0);
+
   void _setSwipes(Object? n) {
     if (n is num) swipesLeft.value = n.toInt() < 0 ? 0 : n.toInt();
   }

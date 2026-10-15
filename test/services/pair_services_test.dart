@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiring_app/services/api_client.dart';
+import 'package:hiring_app/services/hiring_service.dart';
 import 'package:hiring_app/services/hiring_task_service.dart';
 import 'package:hiring_app/services/interview_service.dart';
 import 'package:hiring_app/services/pair_chat_service.dart';
@@ -29,6 +30,9 @@ class _StubApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> patch(String path, {Map<String, dynamic>? body}) async =>
       _answer('PATCH', path, body, null);
+
+  @override
+  Future<Map<String, dynamic>> delete(String path) async => _answer('DELETE', path, null, null);
 }
 
 void main() {
@@ -68,6 +72,16 @@ void main() {
       {'stage': 'hired'},
       {'notes': 'hello'},
     ]);
+  });
+
+  test('removeFromShortlist deletes the swipe row and tells the swipe deck to refresh', () async {
+    final api = _StubApi({
+      'DELETE /company/shortlisted/s%201': {'ok': true},
+    });
+    final before = HiringService.deckRefresh.value;
+    await PipelineService.test(api).removeFromShortlist('s 1');
+    expect(api.calls, ['DELETE /company/shortlisted/s%201']);
+    expect(HiringService.deckRefresh.value, before + 1);
   });
 
   test('bulk message sends ids and text, parses skipped', () async {

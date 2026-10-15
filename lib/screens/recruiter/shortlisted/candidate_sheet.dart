@@ -19,10 +19,16 @@ Future<void> showCandidateSheet(
   Candidate candidate, {
   required void Function(String swipeId, String personId, String stage) onStageChanged,
   required void Function(String swipeId, String notes) onNotesChanged,
+  void Function(String swipeId, String personId)? onRemoved,
 }) {
   return showPairSheet<void>(
     context,
-    (_) => CandidateSheet(candidate: candidate, onStageChanged: onStageChanged, onNotesChanged: onNotesChanged),
+    (_) => CandidateSheet(
+      candidate: candidate,
+      onStageChanged: onStageChanged,
+      onNotesChanged: onNotesChanged,
+      onRemoved: onRemoved,
+    ),
     full: true,
   );
 }
@@ -32,11 +38,16 @@ class CandidateSheet extends StatefulWidget {
   final void Function(String swipeId, String personId, String stage) onStageChanged;
   final void Function(String swipeId, String notes) onNotesChanged;
 
+  /// Called after the candidate was taken out of the shortlist; the sheet
+  /// then closes itself.
+  final void Function(String swipeId, String personId)? onRemoved;
+
   const CandidateSheet({
     super.key,
     required this.candidate,
     required this.onStageChanged,
     required this.onNotesChanged,
+    this.onRemoved,
   });
 
   @override
@@ -128,6 +139,12 @@ class _CandidateSheetState extends State<CandidateSheet> {
             onNotesChanged: (n) => widget.onNotesChanged(c.swipeId, n),
             onTaskSent: _loadTasks,
             onInterviewSent: () {},
+            onRemoved: widget.onRemoved == null
+                ? null
+                : () {
+                    widget.onRemoved!(c.swipeId, c.id);
+                    if (mounted) Navigator.of(context).maybePop();
+                  },
           ),
           if (_tasks != null && _tasks!.isNotEmpty) ...[
             const SizedBox(height: 18),

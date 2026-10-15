@@ -112,6 +112,20 @@ class _ShortlistedScreenState extends State<ShortlistedScreen> {
     _patchRow((r) => r.swipeId == swipeId, (r) => r.copyWith(stage: stage));
   }
 
+  /// A candidate was taken out of the shortlist (back in the swipe deck).
+  void _onRemoved(String swipeId, String personId) {
+    if (!mounted) return;
+    final rows = _rows;
+    if (rows == null) return;
+    final remaining = [for (final r in rows) if (r.swipeId != swipeId) r];
+    setState(() {
+      _rows = remaining;
+      if (_selection.contains(personId) && !remaining.any((r) => r.id == personId)) {
+        _selection.toggle(personId);
+      }
+    });
+  }
+
   void _onNotes(String swipeId, String notes) {
     if (!mounted) return;
     _patchRow((r) => r.swipeId == swipeId, (r) => r.copyWith(notes: notes));
@@ -261,6 +275,7 @@ class _ShortlistedScreenState extends State<ShortlistedScreen> {
                           c,
                           onStageChanged: _onStage,
                           onNotesChanged: _onNotes,
+                          onRemoved: _onRemoved,
                         ),
                       );
                     },

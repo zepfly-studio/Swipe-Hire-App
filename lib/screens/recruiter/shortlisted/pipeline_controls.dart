@@ -21,6 +21,10 @@ class PipelineControls extends StatefulWidget {
   final VoidCallback onTaskSent;
   final VoidCallback onInterviewSent;
 
+  /// The candidate was taken out of the shortlist (the parent closes itself
+  /// and drops the row). When null the remove button is not shown.
+  final VoidCallback? onRemoved;
+
   const PipelineControls({
     super.key,
     required this.candidate,
@@ -28,6 +32,7 @@ class PipelineControls extends StatefulWidget {
     required this.onNotesChanged,
     required this.onTaskSent,
     required this.onInterviewSent,
+    this.onRemoved,
   });
 
   @override
@@ -40,6 +45,7 @@ class _PipelineControlsState extends State<PipelineControls> {
   late final TextEditingController _notes;
   final _focus = FocusNode();
   bool _savingNotes = false;
+  bool _removing = false;
 
   Candidate get _c => widget.candidate;
 
@@ -135,6 +141,42 @@ class _PipelineControlsState extends State<PipelineControls> {
     widget.onInterviewSent();
   }
 
+  Future<void> _remove() async {
+    if (_removing || _c.swipeId.isEmpty) return;
+    final job = _c.jobTitle.isEmpty ? 'this job' : _c.jobTitle;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${_c.name} from your shortlist?'),
+        content: Text(
+          'They go back into your swipe deck for $job. The swipe you used to shortlist them is '
+          'not refunded, so shortlisting them again costs one swipe.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Keep')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.reject),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _removing = true);
+    // Unsaved notes die with the swipe; don't try to save them on dispose.
+    _savedNotes = _notes.text;
+    try {
+      await PipelineService.instance.removeFromShortlist(_c.swipeId);
+      AppToast.success('${_c.name} is back in your swipe deck');
+      widget.onRemoved?.call();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _removing = false);
+      AppToast.error('Could not remove them', description: e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -203,6 +245,15 @@ class _PipelineControlsState extends State<PipelineControls> {
               ),
             ],
           ),
+          if (widget.onRemoved != null) ...[
+            const SizedBox(height: 6),
+            TextButton.icon(
+              onPressed: _removing ? null : _remove,
+              style: TextButton.styleFrom(foregroundColor: AppColors.reject),
+              icon: const Icon(Icons.undo_rounded, size: 18),
+              label: const Text('Remove from shortlist'),
+            ),
+          ],
         ],
       ),
     );
