@@ -57,4 +57,70 @@ router.post("/verifications/:companyId", async (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /admin/companies?status=all|unverified|pending|verified|rejected&q= ->
+//   { companies:[{ id, companyName, website, location, industry, status,
+//   verified, method, gstin, contact:{name,email}, createdAt, requestedAt? }] }
+// Every company, newest first (max 100), so an admin can verify one by hand
+// without it ever having submitted a GSTIN.
+router.get("/companies", async (req, res) => {
+  const status = String(req.query.status || "all");
+  const q = String(req.query.q || "").trim().slice(0, 80);
+  const where = {};
+  if (["unverified", "pending", "verified", "rejected"].includes(status)) where.verificationStatus = status;
+  if (q) {
+    where.OR = [
+      { name: { contains: q, mode: "insensitive" } },
+      { website: { contains: q, mode: "insensitive" } },
+      { owner: { is: { email: { contains: q, mode: "insensitive" } } } },
+      { owner: { is: { name: { contains: q, mode: "insensitive" } } } },
+    ];
+  }
+  const rows = await prisma.company.findMany({
+    where,
+    include: { owner: { select: { name: true, email: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+  const companies = rows.map((c) => {
+    const requested = c.verificationOtp && typeof c.verificationOtp === "object" ? c.verificationOtp.gstRequestedAt : null;
+    return {
+      id: c.ownerId,
+      companyName: c.name,
+      website: c.website,
+      location: c.location,
+      industry: c.industry,
+      status: c.verificationStatus,
+      verified: c.verificationStatus === "verified",
+      method: c.verificationMethod,
+      gstin: c.gstin,
+      contact: { name: c.owner?.name ?? "", email: c.owner?.email ?? "" },
+      createdAt: c.createdAt.toISOString(),
+      ...(c.verificationStatus === "pending" ? { requestedAt: requested || c.updatedAt.toISOString() } : {}),
+    };
+  });
+  res.json({ companies });
+});
+
+// POST /admin/companies/:companyId/verify { verified: boolean } -> { ok, status, verified }
+// `:companyId` is the owner's user id. Verifies (method "admin") or removes
+// the badge. No GSTIN or work-email proof is needed: it is the admin's call.
+router.post("/companies/:companyId/verify", async (req, res) => {
+  if (typeof req.body?.verified !== "boolean") {
+    return res.status(400).json({ error: "Send { verified: true } or { verified: false }.", field: "verified" });
+  }
+  const company = await prisma.company.findFirst({ where: { ownerId: req.params.companyId } });
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  const verify = req.body.verified;
+  const wasVerified = company.verificationStatus === "verified";
+  await prisma.company.update({
+    where: { id: company.id },
+    data: verify
+      ? { verificationStatus: "verified", verificationMethod: "admin", verificationNote: "admin", verifiedAt: new Date() }
+      : { verificationStatus: "unverified", verificationMethod: "", verificationNote: "", verifiedAt: null },
+  });
+  if (verify && !wasVerified) await notifyTeam(company.ownerId, VERIFIED_EVENT(company.name));
+  res.json({ ok: true, status: verify ? "verified" : "unverified", verified: verify });
+});
+
 module.exports = router;

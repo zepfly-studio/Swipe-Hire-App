@@ -263,7 +263,11 @@ class _VerifyCompanyScreenState extends State<VerifyCompanyScreen> {
   // -- verified ---------------------------------------------------------------
 
   Widget _verifiedCard(VerificationInfo info) {
-    final how = info.method == 'gst' ? 'verified by GSTIN' : 'verified by work email';
+    final how = switch (info.method) {
+      'gst' => 'verified by GSTIN',
+      'admin' => 'verified by the GlideRecruit team',
+      _ => 'verified by work email',
+    };
     return Container(
       key: const Key('verified-card'),
       padding: const EdgeInsets.all(24),
