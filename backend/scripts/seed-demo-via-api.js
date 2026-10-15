@@ -242,42 +242,67 @@ function qualificationOf(degreeText) {
   return "Graduate";
 }
 
-async function seedCandidate(row, index) {
-  const [name, age, role, experience, qualificationText, location, skills, expected, company, currentLpa, notice, about] = row;
-  const [first, ...rest] = name.split(" ");
-  const email = `demo.${first.toLowerCase()}.${rest[rest.length - 1].toLowerCase().replace(/[^a-z]/g, "")}@${DOMAIN}`;
-  const account = await createAccount({ email, name, role: "candidate" });
-  if (!account) return log(`skip candidate (exists): ${name}`);
+function emailOf(row) {
+  const [first, ...rest] = row[0].split(" ");
+  return `demo.${first.toLowerCase()}.${rest[rest.length - 1].toLowerCase().replace(/[^a-z]/g, "")}@${DOMAIN}`;
+}
 
+/** The PUT /candidates/me/profile body for one demo candidate row. */
+function profileBody(row, index) {
+  const [name, age, role, experience, qualificationText, location, skills, expected, company, currentLpa, notice, about] = row;
+  const [first] = name.split(" ");
   const [degree, college = ""] = qualificationText.split(",").map((s) => s.trim());
   const years = Number((experience.match(/\d+(\.\d+)?/) || [0])[0]) || 0;
   const female = FEMALE.has(first.toLowerCase());
-  const phone = `+91 90000 ${String(10000 + index).slice(-5)}`;
   const modes = [["onsite"], ["hybrid"], ["remote", "hybrid"], ["onsite", "hybrid"]][index % 4];
   const types = /fresher|intern/i.test(role + experience) ? ["full-time", "internship"] : ["full-time"];
+  return {
+    modes,
+    types,
+    body: {
+      desiredRole: role,
+      phone: `+91 90000 ${String(10000 + index).slice(-5)}`,
+      age,
+      gender: female ? "Female" : "Male",
+      location,
+      qualification: qualificationOf(degree),
+      degree,
+      college,
+      graduationYear: Math.max(2008, 2026 - Math.ceil(years) - 1),
+      skills,
+      experience: experience === "Fresher" ? "Fresher" : experience,
+      currentCompany: company === "Fresher" ? "" : company,
+      currentPost: company === "Fresher" ? "" : role,
+      currentSalaryLpa: currentLpa,
+      expectedSalaryLpa: expected,
+      expectedSalaryMaxLpa: Math.round(expected * 1.25 * 10) / 10,
+      salaryNegotiable: index % 3 === 0,
+      noticePeriod: notice,
+      about,
+      workModes: modes,
+      jobTypes: types,
+      photoUrl: photoFor(name, index),
+    },
+  };
+}
 
-  must(
-    await api("PUT", "/candidates/me/profile", {
-      token: account.token,
-      body: {
-        desiredRole: role, phone, age, gender: female ? "Female" : "Male", location,
-        qualification: qualificationOf(degree), degree, college,
-        graduationYear: Math.max(2008, 2026 - Math.ceil(years) - 1),
-        skills, experience: experience === "Fresher" ? "Fresher" : experience,
-        currentCompany: company === "Fresher" ? "" : company,
-        currentPost: company === "Fresher" ? "" : role,
-        currentSalaryLpa: currentLpa, expectedSalaryLpa: expected,
-        expectedSalaryMaxLpa: Math.round(expected * 1.25 * 10) / 10,
-        salaryNegotiable: index % 3 === 0, noticePeriod: notice, about,
-        workModes: modes, jobTypes: types, photoUrl: photoFor(name, index),
-      },
-    }),
-    `profile ${name}`,
-  );
+async function seedCandidate(row, index) {
+  const name = row[0];
+  const location = row[5];
+  const account = await createAccount({ email: emailOf(row), name, role: "candidate" });
+  if (!account) return log(`skip candidate (exists): ${name}`);
+
+  const { body, modes, types } = profileBody(row, index);
+  must(await api("PUT", "/candidates/me/profile", { token: account.token, body }), `profile ${name}`);
   must(
     await api("PUT", "/candidates/me/preferences", {
       token: account.token,
-      body: { openToWork: true, workModes: modes, jobTypes: types, preferredLocations: [location, ["Remote", "Pune", "Bengaluru", "Hyderabad"][index % 4]].filter((v, i, a) => a.indexOf(v) === i) },
+      body: {
+        openToWork: true,
+        workModes: modes,
+        jobTypes: types,
+        preferredLocations: [location, ["Remote", "Pune", "Bengaluru", "Hyderabad"][index % 4]].filter((v, i, a) => a.indexOf(v) === i),
+      },
     }),
     `preferences ${name}`,
   );
@@ -286,7 +311,7 @@ async function seedCandidate(row, index) {
 }
 
 // ---- main --------------------------------------------------------------
-(async () => {
+async function main() {
   log(`target: ${BASE}  state: ${STATE_FILE}  (${state.accounts.length} accounts remembered)`);
   const health = await api("GET", "/health");
   if (health.status !== 200) throw new Error(`backend not healthy: ${health.status}`);
@@ -303,7 +328,13 @@ async function seedCandidate(row, index) {
   }
   const byRole = state.accounts.reduce((m, a) => ((m[a.role] = (m[a.role] || 0) + 1), m), {});
   log("done.", JSON.stringify(byRole));
-})().catch((e) => {
-  console.error("Seed failed:", e.message);
-  process.exit(1);
-});
+}
+
+if (require.main === module) {
+  main().catch((e) => {
+    console.error("Seed failed:", e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { api, must, emailOf, profileBody, BASE, DOMAIN };
