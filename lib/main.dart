@@ -8,9 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
+import 'services/auth_service.dart';
 import 'services/error_reporter.dart';
 import 'services/recruiter_profile_service.dart';
 import 'theme/app_theme.dart';
+import 'utils/sign_out_navigation.dart';
 import 'widgets/app_toast.dart';
 
 Future<void> main() async {
@@ -78,12 +80,35 @@ Future<void> _activateAppCheck() async {
   }
 }
 
-class HiringApp extends StatelessWidget {
+class HiringApp extends StatefulWidget {
   const HiringApp({super.key});
+
+  @override
+  State<HiringApp> createState() => _HiringAppState();
+}
+
+class _HiringAppState extends State<HiringApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<Object?>? _signOutWatch;
+
+  @override
+  void initState() {
+    super.initState();
+    // Logging out (or losing the session) must land on the login page even
+    // when Profile/Settings screens were pushed on top of AuthGate.
+    _signOutWatch = popToRootOnSignOut(AuthService.instance.authStateChanges, _navigatorKey);
+  }
+
+  @override
+  void dispose() {
+    _signOutWatch?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'GlideRecruit',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,

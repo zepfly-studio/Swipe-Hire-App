@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/app_user.dart';
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 import '../../services/error_reporter.dart';
@@ -45,6 +46,71 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
   bool _loggingOut = false;
 
   AuthService get _auth => widget.authService ?? AuthService.instance;
+
+  /// What the server says about this account (null until loaded / on failure).
+  AppUser? _me;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMe();
+  }
+
+  Future<void> _loadMe() async {
+    try {
+      final uid = _auth.currentUid;
+      if (uid.isEmpty) return;
+      final me = await _auth.fetchProfile(uid);
+      if (mounted) setState(() => _me = me);
+    } catch (_) {
+      // The card is informational; the forms below work without it.
+    }
+  }
+
+  Widget _accountCard() {
+    final me = _me;
+    if (me == null) return const SizedBox.shrink();
+    final isRecruiter = me.role == UserRole.recruiter;
+    Widget row(String label, String value, {bool good = false}) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            children: [
+              SizedBox(width: 130, child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13))),
+              Expanded(
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                    color: good ? AppColors.like : AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+    return Container(
+      key: const Key('account-card'),
+      margin: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Signed in as', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          const SizedBox(height: 2),
+          Text(me.email, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          row('Account type', isRecruiter ? 'Recruiter (company)' : 'Candidate'),
+          if (isRecruiter) row('Company owner', me.isOwner ? 'Yes' : 'No (team member)'),
+          row('Admin access', me.isAdmin ? 'Yes' : 'No', good: me.isAdmin),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -139,6 +205,7 @@ class _AccountSecurityScreenState extends State<AccountSecurityScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           children: [
+            _accountCard(),
             const Text('Change password', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             const Text(
