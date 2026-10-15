@@ -11,6 +11,10 @@ http.BaseRequest withUploadProgress(
 ) {
   if (onProgress == null) return request;
   final total = request.contentLength ?? 0;
+  // finalize() must run BEFORE the headers are copied: a MultipartRequest
+  // writes its `content-type: multipart/form-data; boundary=...` header
+  // there, and a body without that header is rejected by every server.
+  final body = request.finalize();
   final streamed = http.StreamedRequest(request.method, request.url)
     ..headers.addAll(request.headers)
     ..contentLength = request.contentLength
@@ -20,7 +24,7 @@ http.BaseRequest withUploadProgress(
 
   var sent = 0;
   var lastReported = -1;
-  request.finalize().listen(
+  body.listen(
     (chunk) {
       streamed.sink.add(chunk);
       sent += chunk.length;

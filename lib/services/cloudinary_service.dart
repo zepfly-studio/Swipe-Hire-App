@@ -131,7 +131,18 @@ class CloudinaryService {
       throw StateError('The upload took too long. Check your connection and try again.');
     }
     if (response.statusCode != 200) {
-      throw StateError('The upload was rejected (${response.statusCode}). Please try a different file.');
+      // Cloudinary explains a refusal in {"error": {"message": "..."}} (file
+      // too large, format not allowed, ...). Show that, not just the number.
+      var reason = '';
+      try {
+        final parsed = jsonDecode(response.body);
+        final error = parsed is Map<String, dynamic> ? parsed['error'] : null;
+        if (error is Map && error['message'] is String) reason = (error['message'] as String).trim();
+      } catch (_) {
+        // Not JSON; fall through to the generic text.
+      }
+      final detail = reason.isEmpty ? '' : ' $reason';
+      throw StateError('The upload was rejected (${response.statusCode}).$detail Please try a different file.');
     }
 
     final body = jsonDecode(response.body);

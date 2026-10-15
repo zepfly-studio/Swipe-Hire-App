@@ -73,8 +73,10 @@ class ApiClient {
     defaultValue: 'https://swipe-hire-app.onrender.com',
   );
 
-  /// How long to wait for the server before giving up.
-  static const Duration _defaultTimeout = Duration(seconds: 20);
+  /// How long to wait for the server before giving up. Generous on purpose:
+  /// the free Render plan sleeps when idle and the first request after that
+  /// can take 30-60 seconds to be answered.
+  static const Duration _defaultTimeout = Duration(seconds: 60);
 
   late String baseUrl = _defaultBaseUrl();
 
