@@ -306,7 +306,10 @@ class JobCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (job.isOpen)
                   FilledButton(
@@ -314,19 +317,16 @@ class JobCard extends StatelessWidget {
                     style: FilledButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 14)),
                     child: const Text('Swipe'),
                   ),
-                if (job.isOpen) const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: onShortlisted,
                   style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 12)),
                   child: const Text('Shortlisted'),
                 ),
-                const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: onEdit,
                   style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 12)),
                   child: const Text('Edit'),
                 ),
-                const Spacer(),
                 if (busy)
                   const Padding(
                     padding: EdgeInsets.all(10),

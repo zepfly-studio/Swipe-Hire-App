@@ -317,6 +317,11 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+final ButtonStyle _compact = OutlinedButton.styleFrom(
+  minimumSize: const Size(0, 44),
+  padding: const EdgeInsets.symmetric(horizontal: 14),
+);
+
 class _CompanyCard extends StatelessWidget {
   final AdminCompany row;
   final bool busy;
@@ -388,6 +393,7 @@ class _CompanyCard extends StatelessWidget {
               if (row.gstin.isNotEmpty)
                 OutlinedButton.icon(
                   onPressed: onCheckGstin,
+                  style: _compact,
                   icon: const Icon(Icons.open_in_new_rounded, size: 16),
                   label: const Text('Check GSTIN'),
                 ),
@@ -396,6 +402,8 @@ class _CompanyCard extends StatelessWidget {
                   key: Key('reject-${row.id}'),
                   onPressed: busy ? null : onReject,
                   style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     foregroundColor: AppColors.reject,
                     side: const BorderSide(color: AppColors.reject),
                   ),
@@ -407,6 +415,8 @@ class _CompanyCard extends StatelessWidget {
                   key: Key('unverify-${row.id}'),
                   onPressed: busy ? null : onRemoveBadge,
                   style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     foregroundColor: AppColors.reject,
                     side: const BorderSide(color: AppColors.reject),
                   ),
@@ -416,6 +426,10 @@ class _CompanyCard extends StatelessWidget {
               else
                 FilledButton.icon(
                   key: Key('verify-${row.id}'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
                   onPressed: busy ? null : onVerify,
                   icon: busy
                       ? const SizedBox(
