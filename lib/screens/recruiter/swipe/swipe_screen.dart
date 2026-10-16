@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show VelocityTracker;
 import 'package:flutter/material.dart';
 
 import '../../../models/candidate.dart';
@@ -9,6 +8,7 @@ import '../../../services/hiring_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_nav.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/flick_jump.dart';
 import '../../../widgets/page_transitions.dart';
 import '../../../widgets/swipe_card.dart';
 import '../../resume_screen.dart';
@@ -71,35 +71,10 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
 
   double _springFrom = 0;
 
-  // A quick swipe up on the card jumps straight to the intro video (the last
-  // block of the card), a quick swipe down from there jumps back to the top;
-  // a slow drag scrolls normally through the resume and skills.
+  // A quick swipe up on the card jumps straight to the intro video, a quick
+  // swipe down jumps back to the top (see FlickJump); slow drags scroll.
   final ScrollController _scroll = ScrollController();
   final GlobalKey _videoKey = GlobalKey();
-  VelocityTracker? _tracker;
-
-  void _onPress(PointerDownEvent e) {
-    _tracker = VelocityTracker.withKind(e.kind)..addPosition(e.timeStamp, e.position);
-  }
-
-  void _onMove(PointerMoveEvent e) => _tracker?.addPosition(e.timeStamp, e.position);
-
-  void _onRelease(PointerUpEvent e) {
-    final v = _tracker?.getVelocity().pixelsPerSecond;
-    _tracker = null;
-    if (v == null || v.dy.abs() < 1100 || v.dy.abs() < v.dx.abs() * 1.5 || !_scroll.hasClients) return;
-    // After the scroll view's own fling has started, so ours wins.
-    Future<void>.delayed(Duration.zero, () {
-      if (!mounted || !_scroll.hasClients) return;
-      if (v.dy < 0) {
-        final video = _videoKey.currentContext;
-        if (video == null || !video.mounted) return;
-        Scrollable.ensureVisible(video, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic, alignment: 0.05);
-      } else {
-        _scroll.animateTo(0, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic);
-      }
-    });
-  }
 
   @override
   void dispose() {
@@ -361,10 +336,9 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
                     Transform.scale(scale: scale, alignment: Alignment.topCenter, child: child),
                 child: Stack(
                   children: [
-                    Listener(
-                      onPointerDown: _onPress,
-                      onPointerMove: _onMove,
-                      onPointerUp: _onRelease,
+                    FlickJump(
+                      controller: _scroll,
+                      target: _videoKey,
                       child: SingleChildScrollView(
                         key: ValueKey('scroll-${top.id}'),
                         controller: _scroll,
