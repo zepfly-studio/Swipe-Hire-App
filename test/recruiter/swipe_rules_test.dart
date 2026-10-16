@@ -72,15 +72,22 @@ void main() {
       });
     });
 
-    test('work mode and job type are sent, counted, saved and labelled', () {
-      const f = SwipeFilters(workModes: ['remote', 'hybrid'], jobTypes: ['contract']);
+    test('role, salary range and work mode are sent, counted, saved and labelled', () {
+      const f = SwipeFilters(
+        role: ' Web Developer ',
+        minSalary: 3,
+        maxSalary: 7,
+        workModes: ['remote', 'hybrid'],
+      );
       expect(f.isEmpty, isFalse);
-      expect(f.toQuery(), {'workMode': 'remote,hybrid', 'jobType': 'contract'});
-      expect(f.activeCount, 2);
-      expect(SwipeFilters.fromJson(f.toJson()), f);
-      expect(f.summaryParts, ['Remote/Hybrid', 'Contract']);
-      expect(f.label, 'Remote/Hybrid · Contract');
-      expect(f, isNot(const SwipeFilters(workModes: ['remote'], jobTypes: ['contract'])));
+      expect(f.toQuery(), {'role': 'Web Developer', 'minSalary': '3', 'maxSalary': '7', 'workMode': 'remote,hybrid'});
+      expect(f.activeCount, 4);
+      expect(SwipeFilters.fromJson(f.toJson()), SwipeFilters.fromJson(f.toJson()));
+      expect(SwipeFilters.fromJson(f.toJson()).role, 'Web Developer');
+      expect(f.summaryParts, ['Web Developer', '₹3-7 LPA', 'Remote/Hybrid']);
+      expect(f.label, 'Web Developer · ₹3-7 LPA · Remote/Hybrid');
+      expect(const SwipeFilters(minSalary: 3).summaryParts, ['₹3+ LPA']);
+      expect(const SwipeFilters(workModes: ['remote']), isNot(const SwipeFilters(workModes: ['hybrid'])));
     });
 
     test('empty filters send nothing', () {

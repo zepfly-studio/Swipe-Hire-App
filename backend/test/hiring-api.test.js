@@ -220,7 +220,15 @@ describe("recruiters without a job", () => {
     const deck = await api("GET", `/candidates?limit=50&q=${tag}&skills=Flutter&jobId=general`, { token: rec.token });
     assert.equal(deck.status, 200, JSON.stringify(deck.json));
     assert.ok(deck.json.candidates.some((c) => c.id === cand.uid));
-    assert.equal(deck.json.candidates.find((c) => c.id === cand.uid).matchScore, null, "nothing to score against");
+    assert.equal(deck.json.candidates.find((c) => c.id === cand.uid).matchScore, 100, "scored against the Flutter filter");
+    const unscored = await api("GET", `/candidates?limit=50&q=${tag}&role=${encodeURIComponent(tag)}&jobId=general`, { token: rec.token });
+    assert.equal(unscored.json.candidates.find((c) => c.id === cand.uid).matchScore, null, "a role alone gives nothing to score");
+
+    // The match % is scored against the filters when there is no job.
+    const scored = await api("GET", `/candidates?limit=50&q=${tag}&skills=Flutter,Zzzz&jobId=general`, { token: rec.token });
+    const scoredCard = scored.json.candidates.find((c) => c.id === cand.uid);
+    assert.ok(scoredCard.matchScore > 0 && scoredCard.matchScore < 100, `partial skills match, got ${scoredCard.matchScore}`);
+    assert.deepEqual(scoredCard.matchedSkills, ["Flutter"]);
 
     const swipe = await api("POST", "/company/swipe", { token: rec.token, body: { candidateId: cand.uid, action: "right", jobId: "general" } });
     assert.equal(swipe.status, 200, JSON.stringify(swipe.json));
@@ -232,6 +240,32 @@ describe("recruiters without a job", () => {
     // No candidate-facing list shows it.
     const browse = await api("GET", "/jobs", { token: cand.token });
     assert.ok(!(browse.json.jobs || []).some((j) => j.title === "General hiring"));
+  });
+
+  it("filters candidates by role and by a salary range (negotiable people always stay)", async () => {
+    const rec = await signup("recruiter", "Role Rec");
+    const tag = unique();
+    const mk = async (name, role, expected, negotiable) => {
+      const u = await h.candidateWithProfile(name, {
+        desiredRole: `${tag} ${role}`,
+        expectedSalaryLpa: expected,
+        salaryNegotiable: negotiable,
+      });
+      return u;
+    };
+    const low = await mk("Low Cand", "Web Developer", 3, false);
+    const mid = await mk("Mid Cand", "Web Developer", 8, false);
+    const high = await mk("High Cand", "Data Analyst", 20, false);
+    const flex = await mk("Flex Cand", "Data Analyst", 25, true);
+    await hc.giveSwipes(rec, 50);
+    const ids = async (qs) =>
+      (await api("GET", `/candidates?limit=50&q=${tag}&jobId=general&${qs}`, { token: rec.token })).json.candidates.map((c) => c.id).sort();
+    const sorted = (...u) => u.map((x) => x.uid).sort();
+    assert.deepEqual(await ids("role=web developer"), sorted(low, mid));
+    assert.deepEqual(await ids("role=analyst"), sorted(high, flex));
+    assert.deepEqual(await ids("minSalary=5&maxSalary=10"), sorted(mid, flex));
+    assert.deepEqual(await ids("minSalary=10"), sorted(high, flex));
+    assert.deepEqual(await ids("maxSalary=5"), sorted(low, flex));
   });
 
   it("filters candidates by work mode and job type", async () => {

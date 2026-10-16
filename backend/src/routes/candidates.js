@@ -157,6 +157,9 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
 
   if (limit <= 0) return respond([], null, false);
 
+  // No job: cards are scored against the filters instead (match % on the card).
+  const scoreJob = job.status === deckLib.GENERAL_STATUS ? deckLib.scoringJobFromFilters(deckLib.filtersFromQuery(req.query)) : job;
+
   const where = await deckWhere({ query: req.query, recruiterId: req.user.companyId, job, exclude });
   const cursor = str(req.query.cursor, 200);
 
@@ -164,7 +167,7 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
   const toCards = async (users) => {
     const rel = await deckLib.relationsFor(req.user.companyId, users.map((u) => u.id));
     return users.map((u) =>
-      deckLib.buildCard(u, job, { wishlisted: rel.wishlisted.has(u.id), contact: rel.shortlisted.has(u.id) }),
+      deckLib.buildCard(u, scoreJob, { wishlisted: rel.wishlisted.has(u.id), contact: rel.shortlisted.has(u.id) }),
     );
   };
 
@@ -180,7 +183,7 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
     const now = Date.now();
     const ranked = users
       .map((u) => {
-        const card = deckLib.buildCard(u, job);
+        const card = deckLib.buildCard(u, scoreJob);
         const key = rankKey({
           stale: isStale(u.candidateProfile, now),
           score: card.matchScore,

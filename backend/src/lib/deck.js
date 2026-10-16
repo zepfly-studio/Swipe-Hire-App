@@ -74,15 +74,17 @@ function skillList(value) {
 
 /**
  * The deck query string, as the canonical filter object also stored by saved
- * searches: { location, minExp, maxExp, maxSalary, notice[], skills[],
- * workModes[], jobTypes[] }.
+ * searches: { role, location, minExp, maxExp, minSalary, maxSalary, notice[],
+ * skills[], workModes[], jobTypes[] }.
  * The older ctcMin/ctcMax/noticeMax query keys still work (`extra`).
  */
 function filtersFromQuery(query) {
   return {
+    role: cleanString(query.role, 100),
     location: cleanString(query.location, 100),
     minExp: optionalNumber(query.expMin),
     maxExp: optionalNumber(query.expMax),
+    minSalary: optionalNumber(query.minSalary),
     maxSalary: optionalNumber(query.maxSalary),
     notice: noticeList(query.notice),
     skills: skillList(query.skills),
@@ -104,9 +106,11 @@ function cleanFilters(input) {
     return n !== null && n >= 0 ? n : null;
   };
   return {
+    role: cleanString(f.role, 100),
     location: cleanString(f.location, 60),
     minExp: bounded(f.minExp),
     maxExp: bounded(f.maxExp),
+    minSalary: bounded(f.minSalary),
     maxSalary: bounded(f.maxSalary),
     notice: noticeList(f.notice),
     skills: skillList(f.skills),
@@ -117,9 +121,11 @@ function cleanFilters(input) {
 
 function hasAnyFilter(f) {
   return (
+    Boolean(f.role) ||
     Boolean(f.location) ||
     f.minExp !== null ||
     f.maxExp !== null ||
+    (f.minSalary ?? null) !== null ||
     f.maxSalary !== null ||
     f.notice.length > 0 ||
     f.skills.length > 0 ||
@@ -156,8 +162,20 @@ async function filterConditions(filters) {
   }
   if (filters.minExp !== null) profile.push({ experienceYears: { gte: filters.minExp } });
   if (filters.maxExp !== null) profile.push({ experienceYears: { lte: filters.maxExp } });
+  // Expected salary inside [minSalary, maxSalary]; people open to negotiate are always included.
   if (filters.maxSalary !== null) {
     profile.push({ OR: [{ expectedSalaryLpa: { lte: filters.maxSalary } }, { salaryNegotiable: true }] });
+  }
+  if (filters.minSalary != null) {
+    profile.push({ OR: [{ expectedSalaryLpa: { gte: filters.minSalary } }, { salaryNegotiable: true }] });
+  }
+  if (filters.role) {
+    profile.push({
+      OR: [
+        { desiredRole: { contains: filters.role, mode: "insensitive" } },
+        { currentPost: { contains: filters.role, mode: "insensitive" } },
+      ],
+    });
   }
   if (filters.notice.length) profile.push({ noticeDays: { in: filters.notice } });
   if (filters.workModes?.length) profile.push({ workModes: { hasSome: filters.workModes } });
@@ -192,6 +210,11 @@ function filtersMatch(filters, profile) {
   if (f.minExp !== null && years < f.minExp) return false;
   if (f.maxExp !== null && years > f.maxExp) return false;
   if (f.maxSalary !== null && !profile.salaryNegotiable && !(Number(profile.expectedSalaryLpa) <= f.maxSalary)) return false;
+  if (f.minSalary !== null && !profile.salaryNegotiable && !(Number(profile.expectedSalaryLpa) >= f.minSalary)) return false;
+  if (f.role) {
+    const needle = f.role.toLowerCase();
+    if (![profile.desiredRole, profile.currentPost].some((r) => String(r || "").toLowerCase().includes(needle))) return false;
+  }
   if (f.notice.length && !f.notice.includes(profile.noticeDays)) return false;
   if (f.workModes.length && !f.workModes.some((m) => (profile.workModes || []).includes(m))) return false;
   if (f.jobTypes.length && !f.jobTypes.some((t) => (profile.jobTypes || []).includes(t))) return false;
@@ -277,6 +300,25 @@ async function defaultJob(recruiterId) {
   return prisma.jobPosting.findFirst({ where: { recruiterId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
 }
 
+/**
+ * What a card's match % is scored against when the recruiter has no job: the
+ * filters themselves (skills asked for, minimum experience, city, salary range).
+ * Null when none of those is set, so there is nothing to score.
+ */
+function scoringJobFromFilters(filters) {
+  const skills = filters.skills || [];
+  if (!skills.length && filters.minExp == null && !filters.location && filters.maxSalary == null) return null;
+  return {
+    title: filters.role || "Your filters",
+    skills,
+    skillsNormalized: normalizeSkills(skills),
+    minExperienceYears: filters.minExp ?? 0,
+    location: filters.location || "",
+    salaryMinLpa: filters.minSalary ?? 0,
+    salaryMaxLpa: filters.maxSalary ?? 0,
+  };
+}
+
 /** The recruiter's private general job, created the first time it is needed. */
 async function generalJob(recruiterId) {
   const existing = await prisma.jobPosting.findFirst({
@@ -306,6 +348,7 @@ module.exports = {
   isLive,
   defaultJob,
   generalJob,
+  scoringJobFromFilters,
   GENERAL_STATUS,
   GENERAL_JOB_ID,
   WORK_MODES,

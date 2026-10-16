@@ -11,65 +11,70 @@ const Map<String, int> kNoticeBuckets = {
   '90 days': 90,
 };
 
-/// The filters on the swipe screen (spec C2 "FeedFilters"). Remembered per
-/// user, sent to GET /candidates and stored inside a saved search.
+/// The filters on the swipe screen: role, city, experience, salary range,
+/// work mode, notice period and skills. Remembered per user, sent to
+/// GET /candidates and stored inside a saved search.
 @immutable
 class SwipeFilters {
+  /// Role / job title; matches a candidate's desired role or current post.
+  final String role;
   final String location;
   final double? minExp;
   final double? maxExp;
 
-  /// The company's budget (max LPA): shows candidates whose expected salary
-  /// is at or below it, plus anyone open to negotiate.
+  /// Salary range in LPA, checked against the candidate's expected salary;
+  /// anyone open to negotiate is always included.
+  final double? minSalary;
   final double? maxSalary;
 
   /// Notice-period buckets in days (0, 15, 30, 60, 90), sorted.
   final List<int> notice;
   final List<String> skills;
 
-  /// Work modes (`onsite`, `hybrid`, `remote`) and job types (`full-time`,
-  /// `part-time`, `internship`, `contract`) the candidate is open to; a
+  /// Work modes (`onsite`, `hybrid`, `remote`) the candidate is open to; a
   /// candidate matches when they accept any of the chosen ones.
   final List<String> workModes;
-  final List<String> jobTypes;
 
   const SwipeFilters({
+    this.role = '',
     this.location = '',
     this.minExp,
     this.maxExp,
+    this.minSalary,
     this.maxSalary,
     this.notice = const [],
     this.skills = const [],
     this.workModes = const [],
-    this.jobTypes = const [],
   });
 
   static const int maxSkills = 10;
 
   bool get isEmpty =>
+      role.trim().isEmpty &&
       location.trim().isEmpty &&
       minExp == null &&
       maxExp == null &&
+      minSalary == null &&
       maxSalary == null &&
       notice.isEmpty &&
       skills.isEmpty &&
-      workModes.isEmpty &&
-      jobTypes.isEmpty;
+      workModes.isEmpty;
 
-  /// City, min experience, max experience and budget count one each; notice
-  /// period and skills one each (spec C15).
+  /// Role, city, each experience and salary bound count one each; notice
+  /// period, skills and work mode one each.
   int get activeCount =>
+      (role.trim().isNotEmpty ? 1 : 0) +
       (location.trim().isNotEmpty ? 1 : 0) +
       (minExp != null ? 1 : 0) +
       (maxExp != null ? 1 : 0) +
+      (minSalary != null ? 1 : 0) +
       (maxSalary != null ? 1 : 0) +
       (notice.isNotEmpty ? 1 : 0) +
       (skills.isNotEmpty ? 1 : 0) +
-      (workModes.isNotEmpty ? 1 : 0) +
-      (jobTypes.isNotEmpty ? 1 : 0);
+      (workModes.isNotEmpty ? 1 : 0);
 
-  /// "Jaipur", "2-5 yrs", "Budget ₹8 LPA", "Notice 15d/30d", "React, Excel":
-  /// the active filters as short phrases (empty when no filter is set).
+  /// "Web Developer", "Jaipur", "2-5 yrs", "₹3-7 LPA", "Remote", "Notice 15d",
+  /// "React, Excel": the active filters as short phrases (empty when none).
   List<String> get summaryParts {
     final exp = minExp != null && maxExp != null
         ? '${_num(minExp!)}-${_num(maxExp!)} yrs'
@@ -78,13 +83,20 @@ class SwipeFilters {
             : maxExp != null
                 ? 'up to ${_num(maxExp!)} yrs'
                 : '';
+    final pay = minSalary != null && maxSalary != null
+        ? '₹${_num(minSalary!)}-${_num(maxSalary!)} LPA'
+        : minSalary != null
+            ? '₹${_num(minSalary!)}+ LPA'
+            : maxSalary != null
+                ? 'up to ₹${_num(maxSalary!)} LPA'
+                : '';
     return [
+      if (role.trim().isNotEmpty) role.trim(),
       if (location.trim().isNotEmpty) location.trim(),
       if (exp.isNotEmpty) exp,
-      if (maxSalary != null) 'Budget ₹${_num(maxSalary!)} LPA',
-      if (notice.isNotEmpty) 'Notice ${notice.map((d) => d == 0 ? 'immediate' : '${d}d').join('/')}',
+      if (pay.isNotEmpty) pay,
       if (workModes.isNotEmpty) workModes.map((m) => kJobWorkModeLabels[m] ?? m).join('/'),
-      if (jobTypes.isNotEmpty) jobTypes.map((t) => kJobTypeLabelsMap[t] ?? t).join('/'),
+      if (notice.isNotEmpty) 'Notice ${notice.map((d) => d == 0 ? 'immediate' : '${d}d').join('/')}',
       if (skills.isNotEmpty) skills.take(4).join(', ') + (skills.length > 4 ? '…' : ''),
     ];
   }
@@ -99,27 +111,29 @@ class SwipeFilters {
 
   /// Query parameters for GET /candidates.
   Map<String, String> toQuery() => {
+        if (role.trim().isNotEmpty) 'role': role.trim(),
         if (location.trim().isNotEmpty) 'location': location.trim(),
         if (minExp != null) 'expMin': _num(minExp!),
         if (maxExp != null) 'expMax': _num(maxExp!),
+        if (minSalary != null) 'minSalary': _num(minSalary!),
         if (maxSalary != null) 'maxSalary': _num(maxSalary!),
         if (notice.isNotEmpty) 'notice': notice.join(','),
         if (skills.isNotEmpty) 'skills': skills.take(maxSkills).join(','),
         if (workModes.isNotEmpty) 'workMode': workModes.join(','),
-        if (jobTypes.isNotEmpty) 'jobType': jobTypes.join(','),
       };
 
   /// The `filters` object of a saved search (POST /company/searches) and of
   /// the copy remembered on the device.
   Map<String, dynamic> toJson() => {
+        'role': role.trim(),
         'location': location.trim(),
         'minExp': minExp,
         'maxExp': maxExp,
+        'minSalary': minSalary,
         'maxSalary': maxSalary,
         'notice': notice,
         'skills': skills.take(maxSkills).toList(),
         'workModes': workModes,
-        'jobTypes': jobTypes,
       };
 
   static double? _double(Object? v) {
@@ -136,6 +150,8 @@ class SwipeFilters {
     return int.tryParse(RegExp(r'\d+').firstMatch(s)?.group(0) ?? '');
   }
 
+  static List<String> _strings(Object? v) => v is List ? v.map((e) => e.toString()).toList() : const [];
+
   /// Tolerant: missing fields, strings for numbers, `notice` as ints or
   /// labels ("15 days").
   factory SwipeFilters.fromJson(Object? raw) {
@@ -148,39 +164,42 @@ class SwipeFilters {
       }
     }
     return SwipeFilters(
+      role: (raw['role'] ?? '').toString(),
       location: (raw['location'] ?? '').toString(),
       minExp: _double(raw['minExp']),
       maxExp: _double(raw['maxExp']),
+      minSalary: _double(raw['minSalary']),
       maxSalary: _double(raw['maxSalary']),
       notice: days.toList()..sort(),
-      skills: raw['skills'] is List ? (raw['skills'] as List).map((e) => e.toString()).toList() : const [],
-      workModes: raw['workModes'] is List ? (raw['workModes'] as List).map((e) => e.toString()).toList() : const [],
-      jobTypes: raw['jobTypes'] is List ? (raw['jobTypes'] as List).map((e) => e.toString()).toList() : const [],
+      skills: _strings(raw['skills']),
+      workModes: _strings(raw['workModes']),
     );
   }
 
   @override
   bool operator ==(Object other) =>
       other is SwipeFilters &&
+      other.role == role &&
       other.location == location &&
       other.minExp == minExp &&
       other.maxExp == maxExp &&
+      other.minSalary == minSalary &&
       other.maxSalary == maxSalary &&
       listEquals(other.notice, notice) &&
       listEquals(other.skills, skills) &&
-      listEquals(other.workModes, workModes) &&
-      listEquals(other.jobTypes, jobTypes);
+      listEquals(other.workModes, workModes);
 
   @override
   int get hashCode => Object.hash(
+        role,
         location,
         minExp,
         maxExp,
+        minSalary,
         maxSalary,
         Object.hashAll(notice),
         Object.hashAll(skills),
         Object.hashAll(workModes),
-        Object.hashAll(jobTypes),
       );
 }
 

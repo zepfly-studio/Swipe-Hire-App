@@ -4,6 +4,7 @@ import '../../../models/swipe_filters.dart';
 import '../../../services/taxonomy_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/salary.dart';
+import '../../../widgets/inputs/autocomplete_field.dart';
 import '../../../widgets/inputs/form_blocks.dart';
 import '../../../widgets/inputs/location_field.dart';
 import '../../../widgets/inputs/tag_input.dart';
@@ -72,12 +73,13 @@ class _FiltersSheetState extends State<FiltersSheet> {
   late final TextEditingController _city;
   late final TextEditingController _minExp;
   late final TextEditingController _maxExp;
-  late final TextEditingController _budget;
+  late final TextEditingController _minSalary;
+  late final TextEditingController _maxSalary;
+  late final TextEditingController _role;
   late final TextEditingController _name;
   late List<int> _notice;
   late List<String> _skills;
   late List<String> _workModes;
-  late List<String> _jobTypes;
   String? _saveError;
   bool _saving = false;
 
@@ -90,12 +92,13 @@ class _FiltersSheetState extends State<FiltersSheet> {
     _city = TextEditingController(text: f.location);
     _minExp = TextEditingController(text: _numText(f.minExp));
     _maxExp = TextEditingController(text: _numText(f.maxExp));
-    _budget = TextEditingController(text: _numText(f.maxSalary));
+    _minSalary = TextEditingController(text: _numText(f.minSalary));
+    _maxSalary = TextEditingController(text: _numText(f.maxSalary));
+    _role = TextEditingController(text: f.role);
     _name = TextEditingController();
     _notice = [...f.notice];
     _skills = [...f.skills];
     _workModes = [...f.workModes];
-    _jobTypes = [...f.jobTypes];
     TaxonomyService.instance.ensureLoaded();
     _c?.addListener(_onController);
   }
@@ -103,7 +106,7 @@ class _FiltersSheetState extends State<FiltersSheet> {
   @override
   void dispose() {
     _c?.removeListener(_onController);
-    for (final t in [_city, _minExp, _maxExp, _budget, _name]) {
+    for (final t in [_role, _city, _minExp, _maxExp, _minSalary, _maxSalary, _name]) {
       t.dispose();
     }
     super.dispose();
@@ -114,16 +117,16 @@ class _FiltersSheetState extends State<FiltersSheet> {
   }
 
   SwipeFilters _current() {
-    final budget = parseLpa(_budget.text).value;
     return SwipeFilters(
+      role: _role.text.trim(),
       location: _city.text.trim(),
       minExp: parseFilterNumber(_minExp.text),
       maxExp: parseFilterNumber(_maxExp.text),
-      maxSalary: budget,
+      minSalary: parseLpa(_minSalary.text).value,
+      maxSalary: parseLpa(_maxSalary.text).value,
       notice: ([..._notice]..sort()),
       skills: _skills.take(SwipeFilters.maxSkills).toList(),
       workModes: [..._workModes],
-      jobTypes: [..._jobTypes],
     );
   }
 
@@ -132,11 +135,12 @@ class _FiltersSheetState extends State<FiltersSheet> {
       _city.text = f.location;
       _minExp.text = _numText(f.minExp);
       _maxExp.text = _numText(f.maxExp);
-      _budget.text = _numText(f.maxSalary);
+      _minSalary.text = _numText(f.minSalary);
+      _maxSalary.text = _numText(f.maxSalary);
+      _role.text = f.role;
       _notice = [...f.notice];
       _skills = [...f.skills];
       _workModes = [...f.workModes];
-      _jobTypes = [...f.jobTypes];
       _saveError = null;
     });
   }
@@ -162,7 +166,8 @@ class _FiltersSheetState extends State<FiltersSheet> {
   Widget build(BuildContext context) {
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     final filters = _current();
-    final budgetParsed = parseLpa(_budget.text);
+    final minParsed = parseLpa(_minSalary.text);
+    final maxParsed = parseLpa(_maxSalary.text);
     final searches = _c?.searches ?? const <SavedSearch>[];
     final canApply = widget.allowEmpty || !filters.isEmpty;
     final canSave = !filters.isEmpty && _name.text.trim().isNotEmpty && !_saving;
@@ -210,6 +215,19 @@ class _FiltersSheetState extends State<FiltersSheet> {
                   const SizedBox(height: 14),
                 ],
                 FormFieldBlock(
+                  label: 'Role / job title',
+                  child: ValueListenableBuilder<Taxonomy>(
+                    valueListenable: TaxonomyService.instance.notifier,
+                    builder: (context, tax, _) => AutocompleteField(
+                      controller: _role,
+                      options: tax.roles,
+                      hintText: 'e.g. Web Developer',
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FormFieldBlock(
                   label: 'City',
                   hint: 'e.g. Jaipur (also matches preferred cities)',
                   child: LocationField(
@@ -248,27 +266,35 @@ class _FiltersSheetState extends State<FiltersSheet> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                FormFieldBlock(
-                  label: 'Your budget (max LPA)',
-                  hint: _budget.text.trim().isEmpty
-                      ? 'Shows candidates whose expected range starts at or below this, plus anyone open to negotiate'
-                      : budgetParsed.hint,
-                  child: TextField(
-                    controller: _budget,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: fieldDecoration(hintText: 'Any'),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                FormFieldBlock(
-                  label: 'Notice period',
-                  child: MultiChipSelect(
-                    options: [for (final d in kNoticeBuckets.values) '$d'],
-                    values: [for (final d in _notice) '$d'],
-                    labels: {for (final e in kNoticeBuckets.entries) '${e.value}': e.key},
-                    onChanged: (v) => setState(() => _notice = [for (final s in v) int.parse(s)]),
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: FormFieldBlock(
+                        label: 'Min salary (LPA)',
+                        hint: _minSalary.text.trim().isEmpty ? null : minParsed.hint,
+                        child: TextField(
+                          controller: _minSalary,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: fieldDecoration(hintText: 'Any'),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FormFieldBlock(
+                        label: 'Max salary (LPA)',
+                        hint: _maxSalary.text.trim().isEmpty ? 'Includes candidates open to negotiate' : maxParsed.hint,
+                        child: TextField(
+                          controller: _maxSalary,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: fieldDecoration(hintText: 'Any'),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 FormFieldBlock(
@@ -282,12 +308,12 @@ class _FiltersSheetState extends State<FiltersSheet> {
                 ),
                 const SizedBox(height: 14),
                 FormFieldBlock(
-                  label: 'Job type',
+                  label: 'Notice period',
                   child: MultiChipSelect(
-                    options: kJobTypeValues,
-                    values: _jobTypes,
-                    labels: kJobTypeLabelsMap,
-                    onChanged: (v) => setState(() => _jobTypes = v),
+                    options: [for (final d in kNoticeBuckets.values) '$d'],
+                    values: [for (final d in _notice) '$d'],
+                    labels: {for (final e in kNoticeBuckets.entries) '${e.value}': e.key},
+                    onChanged: (v) => setState(() => _notice = [for (final s in v) int.parse(s)]),
                   ),
                 ),
                 const SizedBox(height: 14),

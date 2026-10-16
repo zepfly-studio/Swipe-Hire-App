@@ -4,3 +4,4 @@ firebase-service-account.json
 .env.*
 !.env.example
 scripts/.demo-accounts.json
+scripts/.filter-test-accounts.json

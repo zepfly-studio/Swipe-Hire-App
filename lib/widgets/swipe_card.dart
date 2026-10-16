@@ -4,15 +4,18 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../models/candidate.dart';
 import '../theme/app_theme.dart';
+import '../utils/salary.dart';
 import 'candidate_card_face.dart' show InitialsAvatar;
 import 'candidate_details.dart';
 
 /// A candidate card on the company swipe stack: avatar, name, headline,
-/// wishlist heart, chips, the resume (double-tap opens it) and -- on the top
-/// card -- all the skills right under it, then the intro video and details.
+/// wishlist heart, match % and chips (experience, expected salary,
+/// "Negotiable") and -- on the top card -- the details first, then all the
+/// skills, then the intro video and, last, the resume (double-tap opens it).
 ///
-/// It is one tall card: swiping it up scrolls the whole card, so the first
-/// screen is profile, resume and skills and the intro video follows.
+/// It is one tall card: the first screen is the candidate's details and
+/// skills; a quick swipe up jumps straight to the intro video ([videoKey]
+/// marks it for the swipe screen), and a slow drag scrolls through the rest.
 ///
 /// Drag stamps and tint are drawn by the swipe screen, not here.
 class SwipeCardView extends StatelessWidget {
@@ -27,11 +30,13 @@ class SwipeCardView extends StatelessWidget {
   /// Height of the area the card scrolls in. When given, the resume is sized
   /// so the skills fit on the first screen.
   final double? viewportHeight;
+  final GlobalKey? videoKey;
 
   const SwipeCardView({
     super.key,
     required this.candidate,
     this.viewportHeight,
+    this.videoKey,
     this.isTop = true,
     this.onOpenResume,
     this.onToggleWishlist,
@@ -40,7 +45,7 @@ class SwipeCardView extends StatelessWidget {
   double? _resumeHeight() {
     final v = viewportHeight;
     if (v == null || !isTop) return null;
-    return (v - 330).clamp(180.0, 420.0);
+    return (v - 120).clamp(320.0, 520.0);
   }
 
   static Widget _title(String text) => Padding(
@@ -59,7 +64,7 @@ class SwipeCardView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = candidate;
-    final exp = candidateExpectedSalaryLabel(c);
+    final exp = salaryRangeLabel(c.expectedSalaryLpa, c.expectedSalaryMaxLpa ?? 0);
     final expChip = candidateExperienceChip(c);
     return Container(
       decoration: BoxDecoration(
@@ -138,13 +143,14 @@ class SwipeCardView extends StatelessWidget {
                 _InfoChip(icon: Icons.place_outlined, label: c.location),
               if (expChip.isNotEmpty) _InfoChip(icon: Icons.work_outline_rounded, label: expChip),
               if (exp.isNotEmpty) _InfoChip(icon: Icons.currency_rupee_rounded, label: exp.replaceFirst('₹', '')),
+              if (c.salaryNegotiable) const _InfoChip(icon: Icons.handshake_outlined, label: 'Negotiable', good: true),
             ],
           ),
-          const SizedBox(height: 14),
-          _ResumePreview(candidate: c, live: isTop, onOpen: onOpenResume, height: _resumeHeight()),
           if (isTop) ...[
+            const SizedBox(height: 16),
+            CandidateDetails(candidate: c, showSkills: false, showVideo: false),
             if (c.skills.isNotEmpty) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               _title('SKILLS'),
               SkillChips(candidate: c),
             ],
@@ -156,29 +162,37 @@ class SwipeCardView extends StatelessWidget {
                   Icon(Icons.keyboard_double_arrow_up_rounded, size: 20, color: AppColors.textSecondary),
                   SizedBox(width: 4),
                   Text(
-                    'Swipe up for intro video & details',
+                    'Swipe up for the intro video',
                     style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            _title('INTRO VIDEO'),
-            if (c.introVideoUrl.isNotEmpty)
-              IntroVideo(url: c.introVideoUrl)
-            else
-              Container(
-                height: 90,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(14)),
-                child: const Text(
-                  'No intro video added',
-                  style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
-                ),
-              ),
+            Column(
+              key: videoKey,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _title('INTRO VIDEO'),
+                if (c.introVideoUrl.isNotEmpty)
+                  IntroVideo(url: c.introVideoUrl)
+                else
+                  Container(
+                    height: 90,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(14)),
+                    child: const Text(
+                      'No intro video added',
+                      style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 18),
-            CandidateDetails(candidate: c, showSkills: false, showVideo: false),
-          ],
+            _title('RESUME'),
+          ] else
+            const SizedBox(height: 14),
+          _ResumePreview(candidate: c, live: isTop, onOpen: onOpenResume, height: _resumeHeight()),
         ],
       ),
     );
@@ -188,20 +202,30 @@ class SwipeCardView extends StatelessWidget {
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  const _InfoChip({required this.icon, required this.label});
+
+  /// Highlights a positive fact (salary is negotiable).
+  final bool good;
+  const _InfoChip({required this.icon, required this.label, this.good = false});
 
   @override
   Widget build(BuildContext context) {
+    final color = good ? AppColors.likeText : AppColors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: good ? AppColors.like.withValues(alpha: 0.12) : AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppColors.textSecondary),
+          Icon(icon, size: 14, color: color),
           const SizedBox(width: 4),
           Flexible(
-            child: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: good ? color : null),
+            ),
           ),
         ],
       ),
