@@ -83,11 +83,16 @@ async function deckWhere({ query, recruiterId, job, exclude }) {
 //   1. not stale before stale (stale = no activity for ACTIVE_DAYS),
 //   2. best match first, +NEW_PROFILE_BONUS for sign-ups under a week old,
 //   3. newest sign-up, then id so the order is total.
+// With no job and filters applied the order is simply best match first (the
+// match % against the filters), then active before stale, then newest.
 // The cursor is the last card's position, which stays correct as swiped
 // candidates drop out of the list between pages.
-function rankKey({ stale, score, isNew, createdAt, id }) {
+function rankKey({ stale, score, isNew, createdAt, id, byMatch = false }) {
+  const tail = `${String(createdAt.getTime()).padStart(15, "0")}|${id}`;
+  // Filters applied (no job): the best match is always first, whoever signed up or was active when.
+  if (byMatch) return `${String(score ?? 0).padStart(4, "0")}|${stale ? 0 : 1}|${tail}`;
   const rank = (score ?? 0) + (isNew ? NEW_PROFILE_BONUS : 0);
-  return `${stale ? 0 : 1}|${String(rank).padStart(4, "0")}|${String(createdAt.getTime()).padStart(15, "0")}|${id}`;
+  return `${stale ? 0 : 1}|${String(rank).padStart(4, "0")}|${tail}`;
 }
 
 function isStale(profile, now) {
@@ -157,8 +162,21 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
 
   if (limit <= 0) return respond([], null, false);
 
-  // No job: cards are scored against the filters instead (match % on the card).
-  const scoreJob = job.status === deckLib.GENERAL_STATUS ? deckLib.scoringJobFromFilters(deckLib.filtersFromQuery(req.query)) : job;
+  // No job: cards are scored against the filters instead (match % on the card),
+  // and the best match comes first.
+  const general = job.status === deckLib.GENERAL_STATUS;
+  const deckFilters = deckLib.filtersFromQuery(req.query);
+  const scoreJob = general ? deckLib.scoringJobFromFilters(deckFilters) : job;
+  const byMatch = general && deckLib.hasAnyFilter(deckFilters);
+  const cardOf = (u, extra) => {
+    const card = deckLib.buildCard(u, scoreJob, extra);
+    const fit = byMatch && u.candidateProfile ? deckLib.filterMatch(deckFilters, u.candidateProfile) : null;
+    if (fit) {
+      card.matchScore = fit.score;
+      card.matchReasons = fit.reasons;
+    }
+    return card;
+  };
 
   const where = await deckWhere({ query: req.query, recruiterId: req.user.companyId, job, exclude });
   const cursor = str(req.query.cursor, 200);
@@ -167,7 +185,7 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
   const toCards = async (users) => {
     const rel = await deckLib.relationsFor(req.user.companyId, users.map((u) => u.id));
     return users.map((u) =>
-      deckLib.buildCard(u, scoreJob, { wishlisted: rel.wishlisted.has(u.id), contact: rel.shortlisted.has(u.id) }),
+      cardOf(u, { wishlisted: rel.wishlisted.has(u.id), contact: rel.shortlisted.has(u.id) }),
     );
   };
 
@@ -183,8 +201,9 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
     const now = Date.now();
     const ranked = users
       .map((u) => {
-        const card = deckLib.buildCard(u, scoreJob);
+        const card = cardOf(u);
         const key = rankKey({
+          byMatch,
           stale: isStale(u.candidateProfile, now),
           score: card.matchScore,
           isNew: now - u.createdAt.getTime() < NEW_PROFILE_DAYS * DAY_MS,

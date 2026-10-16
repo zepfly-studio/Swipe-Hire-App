@@ -354,6 +354,74 @@ function scoringJobFromFilters(filters) {
   };
 }
 
+/**
+ * How well a candidate fits ALL the filters, 0-100, with the reasons. Every
+ * candidate the deck returns already passes the filters, so what separates
+ * them is how fully they fit: every asked-for skill, the exact title, living
+ * in the city (not just willing to move), an expectation inside the salary
+ * range (not just "negotiable"), every chosen work mode / job type...
+ * Only the filters that are set count.
+ */
+function filterMatch(filters, profile) {
+  const f = cleanFilters(filters);
+  const parts = []; // { weight, fit 0-1, reason }
+  const add = (weight, fit, reason) => parts.push({ weight, fit, reason });
+  const lower = (v) => String(v || "").toLowerCase();
+
+  if (f.skills.length) {
+    const want = normalizeSkills(f.skills);
+    const have = new Set(profile.skillsNormalized || []);
+    const matched = want.filter((s) => have.has(s)).length;
+    add(3, want.length ? matched / want.length : 1, `${matched} of ${want.length} skills match`);
+  }
+  if (f.role) {
+    const needle = lower(f.role);
+    const titles = [profile.desiredRole, profile.currentPost].map(lower);
+    const exact = titles.some((t) => t === needle);
+    add(2, exact ? 1 : titles.some((t) => t.includes(needle)) ? 0.8 : 0, exact ? "job title matches" : "similar job title");
+  }
+  if (f.location) {
+    const needle = lower(f.location);
+    const lives = lower(profile.location).includes(needle);
+    add(2, lives ? 1 : 0.6, lives ? "lives in the city" : "open to the city");
+  }
+  const years = Number(profile.experienceYears) || 0;
+  if (f.minExp !== null || f.maxExp !== null) {
+    const lo = f.minExp ?? 0;
+    const hi = f.maxExp ?? Infinity;
+    const inside = years >= lo && years <= hi;
+    // Only a minimum was asked for: far above it fits a little less.
+    const over = f.maxExp === null && years > lo + 3 ? Math.min(0.3, (years - lo - 3) / 20) : 0;
+    add(1.5, inside ? 1 - over : 0, "experience fits");
+  }
+  if (f.minSalary !== null || f.maxSalary !== null) {
+    const expected = Number(profile.expectedSalaryLpa) || 0;
+    const inside = expected >= (f.minSalary ?? 0) && expected <= (f.maxSalary ?? Infinity);
+    add(1.5, inside ? 1 : profile.salaryNegotiable ? 0.8 : 0, inside ? "expectation within range" : "salary negotiable");
+  }
+  if (f.workModes.length) {
+    const offered = f.workModes.filter((m) => (profile.workModes || []).includes(m)).length;
+    add(1, offered / f.workModes.length, "work mode fits");
+  }
+  if (f.jobTypes.length) {
+    const offered = f.jobTypes.filter((t) => (profile.jobTypes || []).includes(t)).length;
+    add(1, offered / f.jobTypes.length, "job type fits");
+  }
+  if (f.notice.length) add(1, f.notice.includes(profile.noticeDays) ? 1 : 0, "notice period fits");
+  if (f.qualifications.length) {
+    add(1, f.qualifications.some((q) => lower(q) === lower(profile.qualification)) ? 1 : 0, "education level fits");
+  }
+  if (f.education) {
+    const needle = lower(f.education);
+    add(1, lower(profile.degree).includes(needle) ? 1 : lower(profile.college).includes(needle) ? 0.9 : 0, "degree / college fits");
+  }
+
+  const total = parts.reduce((sum, p) => sum + p.weight, 0);
+  if (!total) return null;
+  const score = Math.round((parts.reduce((sum, p) => sum + p.weight * p.fit, 0) / total) * 100);
+  return { score: Math.max(0, Math.min(100, score)), reasons: parts.filter((p) => p.fit >= 0.8).map((p) => p.reason) };
+}
+
 /** The recruiter's private general job, created the first time it is needed. */
 async function generalJob(recruiterId) {
   const existing = await prisma.jobPosting.findFirst({
@@ -384,6 +452,7 @@ module.exports = {
   defaultJob,
   generalJob,
   scoringJobFromFilters,
+  filterMatch,
   GENERAL_STATUS,
   GENERAL_JOB_ID,
   WORK_MODES,

@@ -222,7 +222,7 @@ describe("recruiters without a job", () => {
     assert.ok(deck.json.candidates.some((c) => c.id === cand.uid));
     assert.equal(deck.json.candidates.find((c) => c.id === cand.uid).matchScore, 100, "scored against the Flutter filter");
     const unscored = await api("GET", `/candidates?limit=50&q=${tag}&role=${encodeURIComponent(tag)}&jobId=general`, { token: rec.token });
-    assert.equal(unscored.json.candidates.find((c) => c.id === cand.uid).matchScore, null, "a role alone gives nothing to score");
+    assert.equal(typeof unscored.json.candidates.find((c) => c.id === cand.uid).matchScore, "number", "a role alone is scored too");
 
     // The match % is scored against the filters when there is no job.
     const scored = await api("GET", `/candidates?limit=50&q=${tag}&skills=Flutter,Zzzz&jobId=general`, { token: rec.token });
@@ -266,6 +266,33 @@ describe("recruiters without a job", () => {
     assert.deepEqual(await ids("minSalary=5&maxSalary=10"), sorted(mid, flex));
     assert.deepEqual(await ids("minSalary=10"), sorted(high, flex));
     assert.deepEqual(await ids("maxSalary=5"), sorted(low, flex));
+  });
+
+  it("with filters applied the best match comes first, ahead of recent activity", async () => {
+    const rec = await signup("recruiter", "Rank Rec");
+    const tag = unique();
+    const mk = (name, skills, location) => h.candidateWithProfile(name, { desiredRole: `${tag} Mobile Developer`, skills, location });
+    const full = await mk("Full Match", ["Flutter", "Dart", "Firebase"], "Pune");
+    const part = await mk("Part Match", ["Flutter", "Dart"], "Pune");
+    const away = await mk("Away Match", ["Flutter", "Dart", "Firebase"], "Mumbai");
+    const put = await api("PUT", "/candidates/me/preferences", { token: away.token, body: { preferredLocations: ["Pune"] } });
+    assert.equal(put.status, 200, JSON.stringify(put.json));
+    // The best candidate has been away for a month; the weakest one signed up last.
+    await h.prisma.candidateProfile.update({ where: { userId: full.uid }, data: { activeAt: new Date(Date.now() - 30 * 86400000) } });
+    await h.prisma.user.update({ where: { id: part.uid }, data: { createdAt: new Date(Date.now() + 5000) } });
+    await hc.giveSwipes(rec, 50);
+    const res = await api("GET", `/candidates?limit=50&q=${tag}&jobId=general&skills=Flutter,Dart,Firebase&location=Pune`, { token: rec.token });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const cards = res.json.candidates;
+    assert.equal(cards.length, 3);
+    const score = (u) => cards.find((c) => c.id === u.uid).matchScore;
+    assert.equal(cards[0].id, full.uid, "all skills and lives in the city: first, although inactive for a month");
+    assert.equal(score(full), 100);
+    assert.ok(score(away) < score(full), "open to the city only: a little lower");
+    assert.ok(score(part) < score(away), "one skill short ranks below living elsewhere");
+    assert.deepEqual(cards.map((c) => c.id), [full.uid, away.uid, part.uid], "ordered by match %, not by who signed up last");
+    const scores = cards.map((c) => c.matchScore);
+    assert.deepEqual(scores, [...scores].sort((x, y) => y - x), "highest match % first");
   });
 
   it("filters candidates by education level and degree / college", async () => {
