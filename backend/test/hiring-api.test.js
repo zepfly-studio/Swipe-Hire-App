@@ -202,12 +202,62 @@ describe("jobs lifecycle", () => {
   });
 });
 
+describe("recruiters without a job", () => {
+  it("onboards with the company only, filters candidates and swipes under a private general job", async () => {
+    const rec = await signup("recruiter", "No Job Rec");
+    const ok = await api("POST", "/company/onboarding", {
+      token: rec.token,
+      body: { company: { name: "No Job Co", location: "Pune" } },
+    });
+    assert.equal(ok.status, 200, JSON.stringify(ok.json));
+    assert.equal(ok.json.job, null);
+    assert.equal((await api("GET", "/users/me", { token: rec.token })).json.profileComplete, true);
+
+    // The deck works with no job at all, and the general job stays private.
+    const tag = unique();
+    const cand = await h.candidateWithProfile("General Cand", { desiredRole: `${tag} Dev`, skills: ["Flutter"] });
+    await hc.giveSwipes(rec, 20);
+    const deck = await api("GET", `/candidates?limit=50&q=${tag}&skills=Flutter&jobId=general`, { token: rec.token });
+    assert.equal(deck.status, 200, JSON.stringify(deck.json));
+    assert.ok(deck.json.candidates.some((c) => c.id === cand.uid));
+    assert.equal(deck.json.candidates.find((c) => c.id === cand.uid).matchScore, null, "nothing to score against");
+
+    const swipe = await api("POST", "/company/swipe", { token: rec.token, body: { candidateId: cand.uid, action: "right", jobId: "general" } });
+    assert.equal(swipe.status, 200, JSON.stringify(swipe.json));
+    const again = await api("POST", "/company/swipe", { token: rec.token, body: { candidateId: cand.uid, action: "right", jobId: "general" } });
+    assert.equal(again.status, 409);
+    const shortlisted = await api("GET", "/company/shortlisted", { token: rec.token });
+    assert.equal(shortlisted.json.candidates.length, 1);
+
+    // No candidate-facing list shows it.
+    const browse = await api("GET", "/jobs", { token: cand.token });
+    assert.ok(!(browse.json.jobs || []).some((j) => j.title === "General hiring"));
+  });
+
+  it("filters candidates by work mode and job type", async () => {
+    const rec = await signup("recruiter", "Mode Rec");
+    const tag = unique();
+    const withPrefs = async (name, workModes, jobTypes) => {
+      const u = await h.candidateWithProfile(name, { desiredRole: `${tag} Dev` });
+      const put = await api("PUT", "/candidates/me/preferences", { token: u.token, body: { workModes, jobTypes } });
+      assert.equal(put.status, 200, JSON.stringify(put.json));
+      return u;
+    };
+    const remote = await withPrefs("Remote Cand", ["remote"], ["contract"]);
+    const onsite = await withPrefs("Onsite Cand", ["onsite"], ["full-time"]);
+    await hc.giveSwipes(rec, 20);
+    const ids = async (qs) =>
+      (await api("GET", `/candidates?limit=50&q=${tag}&jobId=general&${qs}`, { token: rec.token })).json.candidates.map((c) => c.id);
+    assert.deepEqual(await ids("workMode=remote"), [remote.uid]);
+    assert.deepEqual(await ids("workMode=on-site"), [onsite.uid]);
+    assert.deepEqual(await ids("jobType=contract"), [remote.uid]);
+    assert.deepEqual(await ids("workMode=remote&jobType=full-time"), []);
+  });
+});
+
 describe("deck rules", () => {
-  it("needs a job, is job-aware, applies salary fit, exclude and the credit cap", async () => {
+  it("is job-aware, applies salary fit, exclude and the credit cap", async () => {
     const rec = await signup("recruiter", "Deck2 Rec");
-    const none = await api("GET", "/candidates", { token: rec.token });
-    assert.equal(none.status, 403);
-    assert.equal(none.json.code, "NO_JOB");
 
     const tag = unique();
     const jobA = await h.postJob(rec, { title: `${tag} A`, salaryMinLpa: 5, salaryMaxLpa: 15, skills: ["Flutter", "Dart"], location: "Pune" });

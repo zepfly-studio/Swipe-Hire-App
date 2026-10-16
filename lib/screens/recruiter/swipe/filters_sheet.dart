@@ -7,18 +7,34 @@ import '../../../utils/salary.dart';
 import '../../../widgets/inputs/form_blocks.dart';
 import '../../../widgets/inputs/location_field.dart';
 import '../../../widgets/inputs/tag_input.dart';
+import '../../../models/job_choices.dart';
 import 'swipe_controller.dart';
 
 /// Opens the "Filter candidates" bottom sheet. Resolves with the filters the
-/// recruiter applied ("Show candidates"), or null when it was dismissed.
-Future<SwipeFilters?> showFiltersSheet(BuildContext context, SwipeController controller) {
+/// recruiter applied, or null when it was dismissed.
+///
+/// With a [controller] the sheet also lists and saves searches (swipe
+/// screen); without one it is just the filter form (Filters screen).
+/// [allowEmpty] false keeps the apply button off until a filter is set.
+Future<SwipeFilters?> showFiltersSheet(
+  BuildContext context, {
+  required SwipeFilters initial,
+  SwipeController? controller,
+  String applyLabel = 'Show candidates',
+  bool allowEmpty = false,
+}) {
   return showModalBottomSheet<SwipeFilters>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: AppColors.bgTop,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-    builder: (_) => FiltersSheet(controller: controller),
+    builder: (_) => FiltersSheet(
+      initial: initial,
+      controller: controller,
+      applyLabel: applyLabel,
+      allowEmpty: allowEmpty,
+    ),
   );
 }
 
@@ -36,8 +52,17 @@ String _numText(double? v) {
 }
 
 class FiltersSheet extends StatefulWidget {
-  final SwipeController controller;
-  const FiltersSheet({super.key, required this.controller});
+  final SwipeFilters initial;
+  final SwipeController? controller;
+  final String applyLabel;
+  final bool allowEmpty;
+  const FiltersSheet({
+    super.key,
+    required this.initial,
+    this.controller,
+    this.applyLabel = 'Show candidates',
+    this.allowEmpty = false,
+  });
 
   @override
   State<FiltersSheet> createState() => _FiltersSheetState();
@@ -51,15 +76,17 @@ class _FiltersSheetState extends State<FiltersSheet> {
   late final TextEditingController _name;
   late List<int> _notice;
   late List<String> _skills;
+  late List<String> _workModes;
+  late List<String> _jobTypes;
   String? _saveError;
   bool _saving = false;
 
-  SwipeController get _c => widget.controller;
+  SwipeController? get _c => widget.controller;
 
   @override
   void initState() {
     super.initState();
-    final f = _c.filters;
+    final f = widget.initial;
     _city = TextEditingController(text: f.location);
     _minExp = TextEditingController(text: _numText(f.minExp));
     _maxExp = TextEditingController(text: _numText(f.maxExp));
@@ -67,13 +94,15 @@ class _FiltersSheetState extends State<FiltersSheet> {
     _name = TextEditingController();
     _notice = [...f.notice];
     _skills = [...f.skills];
+    _workModes = [...f.workModes];
+    _jobTypes = [...f.jobTypes];
     TaxonomyService.instance.ensureLoaded();
-    _c.addListener(_onController);
+    _c?.addListener(_onController);
   }
 
   @override
   void dispose() {
-    _c.removeListener(_onController);
+    _c?.removeListener(_onController);
     for (final t in [_city, _minExp, _maxExp, _budget, _name]) {
       t.dispose();
     }
@@ -93,6 +122,8 @@ class _FiltersSheetState extends State<FiltersSheet> {
       maxSalary: budget,
       notice: ([..._notice]..sort()),
       skills: _skills.take(SwipeFilters.maxSkills).toList(),
+      workModes: [..._workModes],
+      jobTypes: [..._jobTypes],
     );
   }
 
@@ -104,6 +135,8 @@ class _FiltersSheetState extends State<FiltersSheet> {
       _budget.text = _numText(f.maxSalary);
       _notice = [...f.notice];
       _skills = [...f.skills];
+      _workModes = [...f.workModes];
+      _jobTypes = [...f.jobTypes];
       _saveError = null;
     });
   }
@@ -116,7 +149,7 @@ class _FiltersSheetState extends State<FiltersSheet> {
       _saving = true;
       _saveError = null;
     });
-    final err = await _c.saveSearch(_name.text, _current());
+    final err = await _c!.saveSearch(_name.text, _current());
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -130,6 +163,8 @@ class _FiltersSheetState extends State<FiltersSheet> {
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     final filters = _current();
     final budgetParsed = parseLpa(_budget.text);
+    final searches = _c?.searches ?? const <SavedSearch>[];
+    final canApply = widget.allowEmpty || !filters.isEmpty;
     final canSave = !filters.isEmpty && _name.text.trim().isNotEmpty && !_saving;
     return Padding(
       padding: EdgeInsets.only(bottom: inset),
@@ -163,14 +198,14 @@ class _FiltersSheetState extends State<FiltersSheet> {
               shrinkWrap: true,
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               children: [
-                if (_c.searches.isNotEmpty) ...[
+                if (searches.isNotEmpty) ...[
                   const _SectionLabel('Saved searches'),
-                  for (final s in _c.searches)
+                  for (final s in searches)
                     _SavedSearchRow(
                       search: s,
                       onApply: () => _fill(s.filters),
-                      onToggleAlerts: () => _c.toggleSearchAlerts(s),
-                      onDelete: () => _c.deleteSearch(s),
+                      onToggleAlerts: () => _c!.toggleSearchAlerts(s),
+                      onDelete: () => _c!.deleteSearch(s),
                     ),
                   const SizedBox(height: 14),
                 ],
@@ -237,6 +272,26 @@ class _FiltersSheetState extends State<FiltersSheet> {
                 ),
                 const SizedBox(height: 14),
                 FormFieldBlock(
+                  label: 'Work mode',
+                  child: MultiChipSelect(
+                    options: kJobWorkModes,
+                    values: _workModes,
+                    labels: kJobWorkModeLabels,
+                    onChanged: (v) => setState(() => _workModes = v),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FormFieldBlock(
+                  label: 'Job type',
+                  child: MultiChipSelect(
+                    options: kJobTypeValues,
+                    values: _jobTypes,
+                    labels: kJobTypeLabelsMap,
+                    onChanged: (v) => setState(() => _jobTypes = v),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FormFieldBlock(
                   label: 'Must have any of these skills',
                   child: ValueListenableBuilder<Taxonomy>(
                     valueListenable: TaxonomyService.instance.notifier,
@@ -249,70 +304,72 @@ class _FiltersSheetState extends State<FiltersSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.notifications_active_outlined, size: 18, color: AppColors.primary),
-                          SizedBox(width: 8),
-                          Text('Save this search & get alerts', style: TextStyle(fontWeight: FontWeight.w800)),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        "We'll notify you when a new candidate matching these filters joins.",
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.35),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _name,
-                              maxLength: 60,
-                              decoration: fieldDecoration(hintText: 'e.g. React devs in Jaipur'),
-                              onChanged: (_) => setState(() => _saveError = null),
+                if (_c != null) ...[
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.notifications_active_outlined, size: 18, color: AppColors.primary),
+                            SizedBox(width: 8),
+                            Text('Save this search & get alerts', style: TextStyle(fontWeight: FontWeight.w800)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          "We'll notify you when a new candidate matching these filters joins.",
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.35),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _name,
+                                maxLength: 60,
+                                decoration: fieldDecoration(hintText: 'e.g. React devs in Jaipur'),
+                                onChanged: (_) => setState(() => _saveError = null),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton(
+                              onPressed: canSave ? _save : null,
+                              style: FilledButton.styleFrom(minimumSize: const Size(72, 46)),
+                              child: _saving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
+                                    )
+                                  : const Text('Save'),
+                            ),
+                          ],
+                        ),
+                        if (_saveError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(_saveError!, style: const TextStyle(color: AppColors.reject, fontSize: 12.5)),
+                          )
+                        else if (filters.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Set at least one filter first.',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          FilledButton(
-                            onPressed: canSave ? _save : null,
-                            style: FilledButton.styleFrom(minimumSize: const Size(72, 46)),
-                            child: _saving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.onPrimary),
-                                  )
-                                : const Text('Save'),
-                          ),
-                        ],
-                      ),
-                      if (_saveError != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(_saveError!, style: const TextStyle(color: AppColors.reject, fontSize: 12.5)),
-                        )
-                      else if (filters.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 6),
-                          child: Text(
-                            'Set at least one filter first.',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -333,9 +390,9 @@ class _FiltersSheetState extends State<FiltersSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(_current()),
+                    onPressed: canApply ? () => Navigator.of(context).pop(_current()) : null,
                     style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                    child: const Text('Show candidates'),
+                    child: Text(canApply ? widget.applyLabel : 'Set a filter to continue'),
                   ),
                 ),
               ],

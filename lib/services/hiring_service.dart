@@ -105,9 +105,9 @@ class HiringService {
   /// back to null.
   static final ValueNotifier<String?> pendingShortlistedJobId = ValueNotifier<String?>(null);
 
-  /// A job id the Swipe screen should switch to (Jobs screen "Swipe"
-  /// button). The Swipe screen applies it and sets it back to null.
-  static final ValueNotifier<String?> swipeJobRequest = ValueNotifier<String?>(null);
+  /// Bumped when the saved filters ("saved filters") change, so the
+  /// Filters screen and a live swipe screen re-read them.
+  static final ValueNotifier<int> savedFiltersChanged = ValueNotifier<int>(0);
 
   /// Bumped when a candidate goes back into the swipe deck (removed from the
   /// shortlist), so a live swipe screen restarts its feed from the top.
@@ -147,9 +147,9 @@ class HiringService {
   /// POST /company/onboarding. Validation errors carry `field`.
   Future<({HiringCompany company, HiringJob? job})> onboard({
     required Map<String, dynamic> company,
-    required Map<String, dynamic> job,
+    Map<String, dynamic>? job,
   }) async {
-    final res = await _api.post('/company/onboarding', body: {'company': company, 'job': job});
+    final res = await _api.post('/company/onboarding', body: {'company': company, 'job': ?job});
     final c = HiringCompany.fromMap(Map<String, dynamic>.from(res['company'] as Map));
     HiringService.company.value = c;
     _setSwipes(c.swipesLeft);
@@ -341,6 +341,8 @@ class HiringService {
 
   Future<void> rememberJob(String companyId, String jobId) => prefs.write(_jobKey(companyId), jobId);
 
+  /// The filter last applied on the swipe screen. Empty until the recruiter
+  /// sets one -- swiping stays locked until then.
   Future<SwipeFilters> loadFilters(String userId) async {
     final raw = await prefs.read(_filtersKey(userId));
     if (raw == null || raw.isEmpty) return const SwipeFilters();

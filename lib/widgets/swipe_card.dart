@@ -8,26 +8,53 @@ import 'candidate_card_face.dart' show InitialsAvatar;
 import 'candidate_details.dart';
 
 /// A candidate card on the company swipe stack: avatar, name, headline,
-/// wishlist heart, chips, the first page of the resume (double-tap opens it)
-/// and -- on the top card -- the intro video and details below.
+/// wishlist heart, chips, the resume (double-tap opens it) and -- on the top
+/// card -- all the skills right under it, then the intro video and details.
+///
+/// It is one tall card: swiping it up scrolls the whole card, so the first
+/// screen is profile, resume and skills and the intro video follows.
 ///
 /// Drag stamps and tint are drawn by the swipe screen, not here.
 class SwipeCardView extends StatelessWidget {
   final Candidate candidate;
 
-  /// The top card shows the PDF preview and [CandidateDetails]; cards
-  /// behind it are light placeholders.
+  /// The top card renders the live PDF and everything below it; cards flying
+  /// off or behind are light placeholders.
   final bool isTop;
   final VoidCallback? onOpenResume;
   final VoidCallback? onToggleWishlist;
 
+  /// Height of the area the card scrolls in. When given, the resume is sized
+  /// so the skills fit on the first screen.
+  final double? viewportHeight;
+
   const SwipeCardView({
     super.key,
     required this.candidate,
+    this.viewportHeight,
     this.isTop = true,
     this.onOpenResume,
     this.onToggleWishlist,
   });
+
+  double? _resumeHeight() {
+    final v = viewportHeight;
+    if (v == null || !isTop) return null;
+    return (v - 330).clamp(180.0, 420.0);
+  }
+
+  static Widget _title(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -114,24 +141,43 @@ class SwipeCardView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          _ResumePreview(candidate: c, live: isTop, onOpen: onOpenResume),
+          _ResumePreview(candidate: c, live: isTop, onOpen: onOpenResume, height: _resumeHeight()),
           if (isTop) ...[
+            if (c.skills.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _title('SKILLS'),
+              SkillChips(candidate: c),
+            ],
             const SizedBox(height: 14),
             const Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.textSecondary),
+                  Icon(Icons.keyboard_double_arrow_up_rounded, size: 20, color: AppColors.textSecondary),
                   SizedBox(width: 4),
                   Text(
-                    'Scroll down for intro video & details',
+                    'Swipe up for intro video & details',
                     style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
-            CandidateDetails(candidate: c),
+            const SizedBox(height: 16),
+            _title('INTRO VIDEO'),
+            if (c.introVideoUrl.isNotEmpty)
+              IntroVideo(url: c.introVideoUrl)
+            else
+              Container(
+                height: 90,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(14)),
+                child: const Text(
+                  'No intro video added',
+                  style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                ),
+              ),
+            const SizedBox(height: 18),
+            CandidateDetails(candidate: c, showSkills: false, showVideo: false),
           ],
         ],
       ),
@@ -163,12 +209,17 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-/// First page of the resume on white (aspect 1:1.3) with a double-tap hint.
+/// First page of the resume on white with a double-tap hint: aspect 1:1.3,
+/// or a fixed [height] when the card knows its viewport.
 class _ResumePreview extends StatelessWidget {
   final Candidate candidate;
   final bool live;
   final VoidCallback? onOpen;
-  const _ResumePreview({required this.candidate, required this.live, this.onOpen});
+  final double? height;
+  const _ResumePreview({required this.candidate, required this.live, this.onOpen, this.height});
+
+  Widget _sized(Widget child) =>
+      height == null ? AspectRatio(aspectRatio: 1 / 1.3, child: child) : SizedBox(height: height, child: child);
 
   @override
   Widget build(BuildContext context) {
@@ -176,9 +227,8 @@ class _ResumePreview extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onDoubleTap: onOpen,
-      child: AspectRatio(
-        aspectRatio: 1 / 1.3,
-        child: Container(
+      child: _sized(
+        Container(
           decoration: BoxDecoration(
             color: AppColors.onPrimary,
             borderRadius: BorderRadius.circular(12),
@@ -201,9 +251,7 @@ class _ResumePreview extends StatelessWidget {
                   ),
                 )
               else
-                Center(
-                  child: Icon(Icons.description_outlined, size: 56, color: AppColors.textTertiary),
-                ),
+                Center(child: Icon(Icons.description_outlined, size: 56, color: AppColors.textTertiary)),
               Positioned(
                 left: 0,
                 right: 0,

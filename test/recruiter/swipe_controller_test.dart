@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hiring_app/models/hiring_job.dart';
 import 'package:hiring_app/models/swipe_filters.dart';
 import 'package:hiring_app/models/swipe_models.dart';
 import 'package:hiring_app/screens/recruiter/swipe/swipe_controller.dart';
@@ -24,19 +23,26 @@ void main() {
 
   tearDown(() => c.dispose());
 
-  Future<void> start({int swipes = 5, List<String> ids = const ['a', 'b', 'c', 'd']}) async {
+  const jaipur = SwipeFilters(location: 'Jaipur');
+
+  /// Swiping is locked until a filter is set, so most tests start with one.
+  Future<void> start({
+    int swipes = 5,
+    List<String> ids = const ['a', 'b', 'c', 'd'],
+    SwipeFilters? filters = jaipur,
+  }) async {
     service.serverSwipes = swipes;
     service.pages.add([for (final id in ids) card(id, name: 'Person $id')]);
+    if (filters != null) await service.saveFilters('c1', filters);
     await c.init();
   }
 
   group('feed', () {
-    test('first page is requested for the selected job and shown', () async {
+    test('first page is requested under the private general job and shown', () async {
       await start();
-      expect(c.job?.id, 'j1');
       expect(c.stack.map((e) => e.id), ['a', 'b', 'c', 'd']);
       expect(c.viewState, SwipeViewState.ready);
-      expect(service.feedCalls.single.jobId, 'j1');
+      expect(service.feedCalls.single.jobId, kGeneralJob);
     });
 
     test('never asks for more cards than swipes left', () async {
@@ -65,14 +71,14 @@ void main() {
       expect(c.stack.map((e) => e.id), ['b', 'c', 'd', 'e']);
     });
 
-    test('an empty page marks the feed as exhausted: seen everyone / no filter match', () async {
+    test('an empty page marks the feed as exhausted: no more candidates for the filter', () async {
       await start(swipes: 5, ids: ['a']);
       service.pages.add([]);
       await c.swipe(SwipeDir.left);
       await pumpEventQueue();
-      expect(c.viewState, SwipeViewState.seenEveryone);
+      expect(c.viewState, SwipeViewState.noFilterMatch);
 
-      await c.setFilters(const SwipeFilters(location: 'Jaipur'));
+      await c.setFilters(const SwipeFilters(location: 'Pune'));
       await pumpEventQueue();
       expect(c.viewState, SwipeViewState.noFilterMatch);
     });
@@ -82,7 +88,7 @@ void main() {
       service.pages.add([]);
       await c.swipe(SwipeDir.left);
       await pumpEventQueue();
-      expect(c.viewState, SwipeViewState.seenEveryone);
+      expect(c.viewState, SwipeViewState.noFilterMatch);
       final calls = service.feedCalls.length;
 
       service.pages.add([card('back', name: 'Person back')]);
@@ -96,6 +102,7 @@ void main() {
 
     test('a feed error shows the error state and retry loads again', () async {
       service.feedError = ApiException(409, 'This job is paused or closed. Reopen it to see candidates.');
+      await service.saveFilters('c1', jaipur);
       await c.init();
       expect(c.viewState, SwipeViewState.error);
       expect(c.feedError, contains('paused or closed'));
@@ -103,13 +110,6 @@ void main() {
       service.pages.add([card('a')]);
       await c.retry();
       expect(c.viewState, SwipeViewState.ready);
-    });
-
-    test('no open jobs', () async {
-      service.jobs = [];
-      await c.init();
-      expect(c.viewState, SwipeViewState.noJobs);
-      expect(service.feedCalls, isEmpty);
     });
 
     test('filters are sent to the feed and remembered per company', () async {
@@ -122,18 +122,74 @@ void main() {
       expect(await service.loadFilters('c1'), f);
     });
 
-    test('job change resets the stack and remembers the job', () async {
-      service.jobs = [
-        const HiringJob(id: 'j1', title: 'Frontend Dev'),
-        const HiringJob(id: 'j2', title: 'Backend Dev'),
-      ];
+    test('without a filter no candidate is shown: no feed request, no cards', () async {
+      await start(filters: null);
+      expect(c.viewState, SwipeViewState.needsFilter);
+      expect(service.feedCalls, isEmpty);
+      expect(c.stack, isEmpty);
+      await c.swipe(SwipeDir.right);
+      expect(service.swipeCalls, isEmpty);
+      expect(HiringService.swipesLeft.value, 5);
+    });
+
+    test('applying a filter shows candidates and unlocks swiping', () async {
+      await start(filters: null);
+      await c.setFilters(jaipur);
+      expect(c.viewState, SwipeViewState.ready);
+      expect(service.feedCalls.single.filters, jaipur);
+      expect(c.stack.map((e) => e.id), ['a', 'b', 'c', 'd']);
+      await c.swipe(SwipeDir.left);
+      expect(service.swipeCalls.single.id, 'a');
+    });
+
+    test('clearing the filter hides the candidates again and forgets it', () async {
       await start();
-      service.pages.add([card('x')]);
-      await c.selectJob('j2');
-      expect(c.job?.id, 'j2');
-      expect(c.stack.map((e) => e.id), ['x']);
-      expect(await service.lastJobId('c1'), 'j2');
-      expect(c.undoCount, 0);
+      await c.clearFilters();
+      expect(c.viewState, SwipeViewState.needsFilter);
+      expect(c.stack, isEmpty);
+      expect(await service.loadFilters('c1'), const SwipeFilters());
+    });
+
+    test('a filter cleared on the Filters screen is picked up by reloadActiveFilter', () async {
+      await start();
+      expect(c.viewState, SwipeViewState.ready);
+      await service.saveFilters('c1', const SwipeFilters());
+      await c.reloadActiveFilter();
+      expect(c.viewState, SwipeViewState.needsFilter);
+      expect(c.stack, isEmpty);
+    });
+
+    test('an applied filter is saved as a requirement, once, with alerts off', () async {
+      await start();
+      const f = SwipeFilters(location: 'Pune', minExp: 2, skills: ['React']);
+      await c.setFilters(f);
+      await pumpEventQueue();
+      expect(service.createdSearches.single.filters, f);
+      expect(service.createdSearches.single.name, 'Pune · 2+ yrs · React');
+      expect(service.createdSearches.single.alerts, isFalse);
+      expect(c.searches.single.filters, f);
+
+      await c.setFilters(jaipur);
+      await c.setFilters(f); // already saved
+      await pumpEventQueue();
+      expect(service.createdSearches.length, 2); // Pune + Jaipur, no duplicate Pune
+    });
+
+    test('a failing save does not break swiping', () async {
+      await start();
+      service.searchError = ApiException(400, 'You can save up to 20 searches. Delete one first.');
+      service.pages.add([card('z')]);
+      await c.setFilters(const SwipeFilters(location: 'Pune'));
+      await pumpEventQueue();
+      expect(c.stack.map((e) => e.id), ['z']);
+      expect(c.searches, isEmpty);
+    });
+
+    test('requirements changed on the Requirements screen are picked up by reloadSearches', () async {
+      await start();
+      service.searches = [const SavedSearch(id: 's1', name: 'Pune', filters: SwipeFilters(location: 'Pune'))];
+      await c.reloadSearches();
+      expect(c.searches.single.id, 's1');
     });
   });
 
@@ -146,7 +202,7 @@ void main() {
       expect(HiringService.swipesLeft.value, 4);
       expect(c.pendingCount, 1);
       await future;
-      expect(service.swipeCalls.single, (id: 'a', action: 'right', jobId: 'j1'));
+      expect(service.swipeCalls.single, (id: 'a', action: 'right', jobId: kGeneralJob));
       expect(HiringService.swipesLeft.value, 4);
       expect(c.undoCount, 1);
       expect(c.canUndo, isTrue);
@@ -232,7 +288,7 @@ void main() {
       await start();
       await c.swipe(SwipeDir.left);
       expect(c.stack.first.id, 'b');
-      service.undoResult = UndoResult(swipesLeft: 5, action: 'left', jobId: 'j1', card: card('a'));
+      service.undoResult = UndoResult(swipesLeft: 5, action: 'left', jobId: kGeneralJob, card: card('a'));
       await c.undo();
       expect(c.stack.first.id, 'a');
       expect(HiringService.swipesLeft.value, 5);
@@ -246,18 +302,10 @@ void main() {
     test('undoing a shortlist is not refunded', () async {
       await start();
       await c.swipe(SwipeDir.right);
-      service.undoResult = UndoResult(swipesLeft: 4, action: 'right', jobId: 'j1', card: card('a'));
+      service.undoResult = UndoResult(swipesLeft: 4, action: 'right', jobId: kGeneralJob, card: card('a'));
       await c.undo();
       expect(HiringService.swipesLeft.value, 4);
       expect(events.last.message, startsWith('Shortlist undone. Its swipe is not refunded'));
-    });
-
-    test('a card of another job is not put back', () async {
-      await start();
-      await c.swipe(SwipeDir.left);
-      service.undoResult = UndoResult(swipesLeft: 5, action: 'left', jobId: 'other', card: card('a'));
-      await c.undo();
-      expect(c.stack.first.id, 'b');
     });
 
     test('404 resets the undo count and shows the message', () async {

@@ -16,7 +16,7 @@ import 'interviews/interviews_screen.dart';
 import 'messages/messages_screen.dart';
 import 'profile_screen.dart';
 import 'recruiter/company_profile_screen.dart';
-import 'recruiter/jobs/jobs_screen.dart';
+import 'recruiter/filters_screen.dart';
 import 'recruiter/onboarding/company_onboarding_screen.dart';
 import 'recruiter/plans/plans_screen.dart';
 import 'recruiter/shortlisted_screen.dart';
@@ -242,7 +242,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
     if (!_visited.contains(i)) return const SizedBox.shrink();
     return switch (i) {
       0 => const SwipeScreen(),
-      1 => const JobsScreen(),
+      1 => const FiltersScreen(),
       2 => ShortlistedScreen(initialJobId: _shortlistJobId),
       3 => const MessagesScreen(isCompany: true),
       _ => const InterviewsScreen(isCompany: true),
@@ -302,9 +302,9 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
                 label: 'Swipe',
               ),
               const NavigationDestination(
-                icon: Icon(Icons.work_outline_rounded),
-                selectedIcon: Icon(Icons.work_rounded),
-                label: 'Jobs',
+                icon: Icon(Icons.tune_rounded),
+                selectedIcon: Icon(Icons.tune_rounded),
+                label: 'Filters',
               ),
               const NavigationDestination(
                 icon: Icon(Icons.verified_outlined),

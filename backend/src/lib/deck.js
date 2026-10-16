@@ -10,6 +10,17 @@ const { toCandidate } = require("./serializers");
 const MAX_SKILL_FILTERS = 10;
 const MAX_NOTICE_BUCKETS = 10;
 
+// Candidate preference values the work mode / job type filters accept.
+const WORK_MODES = ["onsite", "hybrid", "remote"];
+const JOB_TYPES = ["full-time", "part-time", "internship", "contract"];
+
+// A recruiter who never posts a job still swipes: their swipes hang off one
+// private "general hiring" job, asked for with jobId=GENERAL_JOB_ID. It is not
+// open (isOpen=false), so no candidate-facing list ever shows it, and has no
+// budget so no salary rule applies to it.
+const GENERAL_STATUS = "general";
+const GENERAL_JOB_ID = "general";
+
 function csv(value) {
   return String(value || "")
     .split(",")
@@ -37,6 +48,16 @@ function noticeList(value) {
   return out.slice(0, MAX_NOTICE_BUCKETS);
 }
 
+function choiceList(value, allowed) {
+  const raw = Array.isArray(value) ? value : csv(value);
+  const out = [];
+  for (const item of raw) {
+    const v = String(item ?? "").trim().toLowerCase().replace(/[\s_]+/g, "-").replace(/^on-site$/, "onsite");
+    if (allowed.includes(v) && !out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
 function skillList(value) {
   const raw = Array.isArray(value) ? value : csv(value);
   const seen = new Set();
@@ -53,7 +74,8 @@ function skillList(value) {
 
 /**
  * The deck query string, as the canonical filter object also stored by saved
- * searches: { location, minExp, maxExp, maxSalary, notice[], skills[] }.
+ * searches: { location, minExp, maxExp, maxSalary, notice[], skills[],
+ * workModes[], jobTypes[] }.
  * The older ctcMin/ctcMax/noticeMax query keys still work (`extra`).
  */
 function filtersFromQuery(query) {
@@ -64,6 +86,8 @@ function filtersFromQuery(query) {
     maxSalary: optionalNumber(query.maxSalary),
     notice: noticeList(query.notice),
     skills: skillList(query.skills),
+    workModes: choiceList(query.workMode, WORK_MODES),
+    jobTypes: choiceList(query.jobType, JOB_TYPES),
     extra: {
       ctcMin: optionalNumber(query.ctcMin),
       ctcMax: optionalNumber(query.ctcMax),
@@ -86,11 +110,22 @@ function cleanFilters(input) {
     maxSalary: bounded(f.maxSalary),
     notice: noticeList(f.notice),
     skills: skillList(f.skills),
+    workModes: choiceList(f.workModes, WORK_MODES),
+    jobTypes: choiceList(f.jobTypes, JOB_TYPES),
   };
 }
 
 function hasAnyFilter(f) {
-  return Boolean(f.location) || f.minExp !== null || f.maxExp !== null || f.maxSalary !== null || f.notice.length > 0 || f.skills.length > 0;
+  return (
+    Boolean(f.location) ||
+    f.minExp !== null ||
+    f.maxExp !== null ||
+    f.maxSalary !== null ||
+    f.notice.length > 0 ||
+    f.skills.length > 0 ||
+    (f.workModes || []).length > 0 ||
+    (f.jobTypes || []).length > 0
+  );
 }
 
 // Candidates whose preferredLocations contain `location` (case-insensitive
@@ -125,6 +160,8 @@ async function filterConditions(filters) {
     profile.push({ OR: [{ expectedSalaryLpa: { lte: filters.maxSalary } }, { salaryNegotiable: true }] });
   }
   if (filters.notice.length) profile.push({ noticeDays: { in: filters.notice } });
+  if (filters.workModes?.length) profile.push({ workModes: { hasSome: filters.workModes } });
+  if (filters.jobTypes?.length) profile.push({ jobTypes: { hasSome: filters.jobTypes } });
 
   const extra = filters.extra || {};
   if (extra.ctcMin != null) profile.push({ expectedSalaryLpa: { gte: extra.ctcMin } });
@@ -156,6 +193,8 @@ function filtersMatch(filters, profile) {
   if (f.maxExp !== null && years > f.maxExp) return false;
   if (f.maxSalary !== null && !profile.salaryNegotiable && !(Number(profile.expectedSalaryLpa) <= f.maxSalary)) return false;
   if (f.notice.length && !f.notice.includes(profile.noticeDays)) return false;
+  if (f.workModes.length && !f.workModes.some((m) => (profile.workModes || []).includes(m))) return false;
+  if (f.jobTypes.length && !f.jobTypes.some((t) => (profile.jobTypes || []).includes(t))) return false;
   if (f.location) {
     const needle = f.location.toLowerCase();
     const places = [profile.location, ...(profile.preferredLocations || [])];
@@ -192,8 +231,10 @@ function contactOf(user, profile) {
  * score is computed against. `contact` is only passed for candidates this
  * company already right-swiped.
  */
-function buildCard(user, job, { wishlisted = false, contact = false } = {}) {
+function buildCard(user, rawJob, { wishlisted = false, contact = false } = {}) {
   const profile = user.candidateProfile;
+  // The private general job has no skills to score against.
+  const job = rawJob && rawJob.status !== GENERAL_STATUS ? rawJob : null;
   let match = null;
   if (profile && job) {
     const { score, reasons } = matchScore(job, profile);
@@ -229,11 +270,23 @@ function isLive(user) {
   return Boolean(user && user.role === "candidate" && user.profileComplete && user.candidateProfile && user.candidateProfile.openToWork !== false);
 }
 
-/** The recruiter's default job: oldest open one, else the oldest of any status. */
+/** The job a request without a jobId means: the oldest open one, else the oldest of any status. */
 async function defaultJob(recruiterId) {
   const open = await prisma.jobPosting.findFirst({ where: { recruiterId, isOpen: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   if (open) return open;
   return prisma.jobPosting.findFirst({ where: { recruiterId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+}
+
+/** The recruiter's private general job, created the first time it is needed. */
+async function generalJob(recruiterId) {
+  const existing = await prisma.jobPosting.findFirst({
+    where: { recruiterId, status: GENERAL_STATUS },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+  if (existing) return existing;
+  return prisma.jobPosting.create({
+    data: { recruiterId, title: "General hiring", status: GENERAL_STATUS, isOpen: false, openings: 1 },
+  });
 }
 
 module.exports = {
@@ -252,5 +305,10 @@ module.exports = {
   relationsFor,
   isLive,
   defaultJob,
+  generalJob,
+  GENERAL_STATUS,
+  GENERAL_JOB_ID,
+  WORK_MODES,
+  JOB_TYPES,
   MAX_SKILL_FILTERS,
 };

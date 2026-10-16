@@ -84,12 +84,14 @@ class FakeHiringService extends HiringService {
 
   // Saved searches
   Object? searchError;
+  final List<({String name, SwipeFilters filters, bool alerts})> createdSearches = [];
   final List<({String id, bool alerts})> alertCalls = [];
   final List<String> deletedSearches = [];
 
   @override
   Future<SavedSearch> createSearch({required String name, required SwipeFilters filters, bool alerts = true}) async {
     if (searchError != null) throw searchError!;
+    createdSearches.add((name: name, filters: filters, alerts: alerts));
     return SavedSearch(id: 'new', name: name, filters: filters, alerts: alerts);
   }
 

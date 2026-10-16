@@ -192,55 +192,59 @@ router.post("/onboarding", requireRole("recruiter"), async (req, res) => {
     if (!str(c.location, 150)) throw new FieldError("company.location", "Enter your company location");
     fields = parseCompanyFields(c, "company.");
 
-    const title = str(j.title, 200);
-    if (!title) throw new FieldError("job.title", "Enter the role you are hiring for");
-    const skills = strList(j.skills, 30);
-    if (skills.length === 0) throw new FieldError("job.skills", "Add at least one skill");
+    // The job is optional: recruiters can skip it and filter candidates instead.
+    const wantsJob = Object.keys(j).length > 0;
+    if (wantsJob) {
+      const title = str(j.title, 200);
+      if (!title) throw new FieldError("job.title", "Enter the role you are hiring for");
+      const skills = strList(j.skills, 30);
+      if (skills.length === 0) throw new FieldError("job.skills", "Add at least one skill");
 
-    const number = (value, name, { min = 0, max, label }) => {
-      if (value === undefined || value === null || value === "") return null;
-      const n = Number(value);
-      if (!Number.isFinite(n) || n < min || n > max) throw new FieldError(name, label);
-      return n;
-    };
-    const minExp = number(j.minExperienceYears, "job.minExperienceYears", { max: 50, label: "Enter years between 0 and 50" });
-    const maxExp = number(j.maxExperienceYears, "job.maxExperienceYears", { max: 50, label: "Enter years between 0 and 50" });
-    if (minExp !== null && maxExp !== null && minExp > maxExp) {
-      throw new FieldError("job.minExperienceYears", "Minimum experience cannot be more than maximum experience");
-    }
-    const salaryMax = number(j.salaryMaxLpa, "job.salaryMaxLpa", { max: 1000, label: "Enter a valid salary" });
-    if (salaryMax === null || salaryMax <= 0) {
-      throw new FieldError("job.salaryMaxLpa", "Enter the maximum salary you can offer");
-    }
-    const salaryMin = number(j.salaryMinLpa, "job.salaryMinLpa", { max: 1000, label: "Enter a valid salary" });
-    if (salaryMin !== null && salaryMin > salaryMax) throw new FieldError("job.salaryMinLpa", "Minimum salary cannot be more than maximum salary");
+      const number = (value, name, { min = 0, max, label }) => {
+        if (value === undefined || value === null || value === "") return null;
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < min || n > max) throw new FieldError(name, label);
+        return n;
+      };
+      const minExp = number(j.minExperienceYears, "job.minExperienceYears", { max: 50, label: "Enter years between 0 and 50" });
+      const maxExp = number(j.maxExperienceYears, "job.maxExperienceYears", { max: 50, label: "Enter years between 0 and 50" });
+      if (minExp !== null && maxExp !== null && minExp > maxExp) {
+        throw new FieldError("job.minExperienceYears", "Minimum experience cannot be more than maximum experience");
+      }
+      const salaryMax = number(j.salaryMaxLpa, "job.salaryMaxLpa", { max: 1000, label: "Enter a valid salary" });
+      if (salaryMax === null || salaryMax <= 0) {
+        throw new FieldError("job.salaryMaxLpa", "Enter the maximum salary you can offer");
+      }
+      const salaryMin = number(j.salaryMinLpa, "job.salaryMinLpa", { max: 1000, label: "Enter a valid salary" });
+      if (salaryMin !== null && salaryMin > salaryMax) throw new FieldError("job.salaryMinLpa", "Minimum salary cannot be more than maximum salary");
 
-    let workMode = "onsite";
-    if (j.workMode !== undefined && j.workMode !== null && j.workMode !== "") {
-      workMode = str(j.workMode, 20).toLowerCase().replace(/[\s_-]+/g, "");
-      if (!WORK_MODES.includes(workMode)) throw new FieldError("job.workMode", "Choose on-site, hybrid or remote");
-    }
-    let employmentType = "full-time";
-    if (j.employmentType !== undefined && j.employmentType !== null && j.employmentType !== "") {
-      employmentType = str(j.employmentType, 30).toLowerCase().replace(/[\s_]+/g, "-");
-      if (!JOB_TYPES.includes(employmentType)) throw new FieldError("job.employmentType", "Choose a valid job type");
-    }
+      let workMode = "onsite";
+      if (j.workMode !== undefined && j.workMode !== null && j.workMode !== "") {
+        workMode = str(j.workMode, 20).toLowerCase().replace(/[\s_-]+/g, "");
+        if (!WORK_MODES.includes(workMode)) throw new FieldError("job.workMode", "Choose on-site, hybrid or remote");
+      }
+      let employmentType = "full-time";
+      if (j.employmentType !== undefined && j.employmentType !== null && j.employmentType !== "") {
+        employmentType = str(j.employmentType, 30).toLowerCase().replace(/[\s_]+/g, "-");
+        if (!JOB_TYPES.includes(employmentType)) throw new FieldError("job.employmentType", "Choose a valid job type");
+      }
 
-    jobData = {
-      title,
-      skills,
-      skillsNormalized: normalizeSkills(skills),
-      description: str(j.description, 8000),
-      // The job location defaults to the company's.
-      location: str(j.location, 200) || fields.location,
-      employmentType,
-      workMode,
-      openings: 1,
-      salaryMinLpa: salaryMin ?? 0,
-      salaryMaxLpa: salaryMax,
-      minExperienceYears: minExp ?? 0,
-      maxExperienceYears: maxExp,
-    };
+      jobData = {
+        title,
+        skills,
+        skillsNormalized: normalizeSkills(skills),
+        description: str(j.description, 8000),
+        // The job location defaults to the company's.
+        location: str(j.location, 200) || fields.location,
+        employmentType,
+        workMode,
+        openings: 1,
+        salaryMinLpa: salaryMin ?? 0,
+        salaryMaxLpa: salaryMax,
+        minExperienceYears: minExp ?? 0,
+        maxExperienceYears: maxExp,
+      };
+    }
   } catch (err) {
     if (err instanceof FieldError) return sendFieldError(res, err);
     throw err;
@@ -256,12 +260,14 @@ router.post("/onboarding", requireRole("recruiter"), async (req, res) => {
       update: data,
     });
 
-    let job = await tx.jobPosting.findFirst({
-      where: { recruiterId: companyId },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      include: POSTING_INCLUDE,
-    });
-    if (!job) {
+    let job = jobData
+      ? await tx.jobPosting.findFirst({
+          where: { recruiterId: companyId, status: { not: "general" } },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          include: POSTING_INCLUDE,
+        })
+      : null;
+    if (jobData && !job) {
       job = await tx.jobPosting.create({
         data: { recruiterId: companyId, ...jobData, status: "open", isOpen: true },
         include: POSTING_INCLUDE,
@@ -272,10 +278,12 @@ router.post("/onboarding", requireRole("recruiter"), async (req, res) => {
   });
 
   // Reload the job with the company name just saved.
-  const job = await prisma.jobPosting.findUnique({ where: { id: result.job.id }, include: POSTING_INCLUDE });
+  const job = result.job
+    ? await prisma.jobPosting.findUnique({ where: { id: result.job.id }, include: POSTING_INCLUDE })
+    : null;
   res.json({
     company: toCompany(result.company, { own: true }),
-    job: toJobPosting(job, { stats: { swiped: 0, shortlisted: 0, interviewing: 0, hired: 0 } }),
+    job: job ? toJobPosting(job, { stats: { swiped: 0, shortlisted: 0, interviewing: 0, hired: 0 } }) : null,
   });
 });
 

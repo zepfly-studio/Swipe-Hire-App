@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'job_choices.dart';
+
 /// Notice-period chips and the exact day buckets the backend filters on.
 const Map<String, int> kNoticeBuckets = {
   'Immediate': 0,
@@ -25,6 +27,12 @@ class SwipeFilters {
   final List<int> notice;
   final List<String> skills;
 
+  /// Work modes (`onsite`, `hybrid`, `remote`) and job types (`full-time`,
+  /// `part-time`, `internship`, `contract`) the candidate is open to; a
+  /// candidate matches when they accept any of the chosen ones.
+  final List<String> workModes;
+  final List<String> jobTypes;
+
   const SwipeFilters({
     this.location = '',
     this.minExp,
@@ -32,12 +40,21 @@ class SwipeFilters {
     this.maxSalary,
     this.notice = const [],
     this.skills = const [],
+    this.workModes = const [],
+    this.jobTypes = const [],
   });
 
   static const int maxSkills = 10;
 
   bool get isEmpty =>
-      location.trim().isEmpty && minExp == null && maxExp == null && maxSalary == null && notice.isEmpty && skills.isEmpty;
+      location.trim().isEmpty &&
+      minExp == null &&
+      maxExp == null &&
+      maxSalary == null &&
+      notice.isEmpty &&
+      skills.isEmpty &&
+      workModes.isEmpty &&
+      jobTypes.isEmpty;
 
   /// City, min experience, max experience and budget count one each; notice
   /// period and skills one each (spec C15).
@@ -47,7 +64,36 @@ class SwipeFilters {
       (maxExp != null ? 1 : 0) +
       (maxSalary != null ? 1 : 0) +
       (notice.isNotEmpty ? 1 : 0) +
-      (skills.isNotEmpty ? 1 : 0);
+      (skills.isNotEmpty ? 1 : 0) +
+      (workModes.isNotEmpty ? 1 : 0) +
+      (jobTypes.isNotEmpty ? 1 : 0);
+
+  /// "Jaipur", "2-5 yrs", "Budget ₹8 LPA", "Notice 15d/30d", "React, Excel":
+  /// the active filters as short phrases (empty when no filter is set).
+  List<String> get summaryParts {
+    final exp = minExp != null && maxExp != null
+        ? '${_num(minExp!)}-${_num(maxExp!)} yrs'
+        : minExp != null
+            ? '${_num(minExp!)}+ yrs'
+            : maxExp != null
+                ? 'up to ${_num(maxExp!)} yrs'
+                : '';
+    return [
+      if (location.trim().isNotEmpty) location.trim(),
+      if (exp.isNotEmpty) exp,
+      if (maxSalary != null) 'Budget ₹${_num(maxSalary!)} LPA',
+      if (notice.isNotEmpty) 'Notice ${notice.map((d) => d == 0 ? 'immediate' : '${d}d').join('/')}',
+      if (workModes.isNotEmpty) workModes.map((m) => kJobWorkModeLabels[m] ?? m).join('/'),
+      if (jobTypes.isNotEmpty) jobTypes.map((t) => kJobTypeLabelsMap[t] ?? t).join('/'),
+      if (skills.isNotEmpty) skills.take(4).join(', ') + (skills.length > 4 ? '…' : ''),
+    ];
+  }
+
+  /// A name for a saved filter (the backend allows 60 characters).
+  String get label {
+    final text = summaryParts.join(' · ');
+    return text.length <= 60 ? text : '${text.substring(0, 59)}…';
+  }
 
   static String _num(double v) => v == v.roundToDouble() ? v.round().toString() : v.toString();
 
@@ -59,6 +105,8 @@ class SwipeFilters {
         if (maxSalary != null) 'maxSalary': _num(maxSalary!),
         if (notice.isNotEmpty) 'notice': notice.join(','),
         if (skills.isNotEmpty) 'skills': skills.take(maxSkills).join(','),
+        if (workModes.isNotEmpty) 'workMode': workModes.join(','),
+        if (jobTypes.isNotEmpty) 'jobType': jobTypes.join(','),
       };
 
   /// The `filters` object of a saved search (POST /company/searches) and of
@@ -70,6 +118,8 @@ class SwipeFilters {
         'maxSalary': maxSalary,
         'notice': notice,
         'skills': skills.take(maxSkills).toList(),
+        'workModes': workModes,
+        'jobTypes': jobTypes,
       };
 
   static double? _double(Object? v) {
@@ -104,6 +154,8 @@ class SwipeFilters {
       maxSalary: _double(raw['maxSalary']),
       notice: days.toList()..sort(),
       skills: raw['skills'] is List ? (raw['skills'] as List).map((e) => e.toString()).toList() : const [],
+      workModes: raw['workModes'] is List ? (raw['workModes'] as List).map((e) => e.toString()).toList() : const [],
+      jobTypes: raw['jobTypes'] is List ? (raw['jobTypes'] as List).map((e) => e.toString()).toList() : const [],
     );
   }
 
@@ -115,10 +167,21 @@ class SwipeFilters {
       other.maxExp == maxExp &&
       other.maxSalary == maxSalary &&
       listEquals(other.notice, notice) &&
-      listEquals(other.skills, skills);
+      listEquals(other.skills, skills) &&
+      listEquals(other.workModes, workModes) &&
+      listEquals(other.jobTypes, jobTypes);
 
   @override
-  int get hashCode => Object.hash(location, minExp, maxExp, maxSalary, Object.hashAll(notice), Object.hashAll(skills));
+  int get hashCode => Object.hash(
+        location,
+        minExp,
+        maxExp,
+        maxSalary,
+        Object.hashAll(notice),
+        Object.hashAll(skills),
+        Object.hashAll(workModes),
+        Object.hashAll(jobTypes),
+      );
 }
 
 /// A saved search with alerts (GET /company/searches).

@@ -431,8 +431,7 @@ describe("deck ranking", () => {
     assert.ok(!newest.json.candidates.some((c) => c.id === hidden.uid));
   });
 
-  // Adapted for phase 2: with no posting there is no deck at all (NO_JOB).
-  it("has no deck without a posting, and ranks by freshness then newest with one", async () => {
+  it("ranks by freshness then newest, with or without a posting", async () => {
     const rec = await signup("recruiter", "No Posting Rec");
     const tag = `Np${Date.now() % 100000}`;
     const active = await h.candidateWithProfile("Active Ring", { desiredRole: `${tag} Dev` });
@@ -441,9 +440,10 @@ describe("deck ranking", () => {
     await prisma.candidateProfile.update({ where: { userId: lapsed.uid }, data: { activeAt: new Date(Date.now() - 30 * DAY) } });
     await prisma.user.update({ where: { id: lapsed.uid }, data: { createdAt: new Date(Date.now() + 1000) } });
 
+    await hc.giveSwipes(rec, 1000);
     const none = await api("GET", `/candidates?limit=50&q=${tag}`, { token: rec.token });
-    assert.equal(none.status, 403);
-    assert.equal(none.json.code, "NO_JOB");
+    assert.equal(none.status, 200);
+    assert.deepEqual(none.json.candidates.map((c) => c.id), [active.uid, lapsed.uid]);
 
     await h.postJob(rec, { salaryMaxLpa: 1000, salaryMinLpa: 0 });
     await hc.giveSwipes(rec, 1000);

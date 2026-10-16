@@ -130,14 +130,16 @@ router.get("/", requireRole("recruiter"), async (req, res) => {
 
   const jobId = str(req.query.jobId, 100);
   let job;
-  if (jobId) {
+  if (jobId === deckLib.GENERAL_JOB_ID) {
+    // The recruiter filters candidates without posting a job.
+    job = await deckLib.generalJob(req.user.companyId);
+  } else if (jobId) {
     job = await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.companyId } });
     if (!job) return res.status(404).json({ error: "Job not found." });
   } else {
-    job = await deckLib.defaultJob(req.user.companyId);
-    if (!job) return res.status(403).json({ code: "NO_JOB", error: "Please add a job you are hiring for first" });
+    job = (await deckLib.defaultJob(req.user.companyId)) || (await deckLib.generalJob(req.user.companyId));
   }
-  if (!job.isOpen) return res.status(409).json({ error: PAUSED_MESSAGE });
+  if (!job.isOpen && job.status !== deckLib.GENERAL_STATUS) return res.status(409).json({ error: PAUSED_MESSAGE });
 
   const exclude = deckLib.csv(req.query.exclude).slice(0, 200);
   const requested = Math.min(Math.max(int(req.query.limit, DEFAULT_PAGE), 1), MAX_PAGE);

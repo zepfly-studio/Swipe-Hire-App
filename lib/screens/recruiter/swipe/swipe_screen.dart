@@ -4,9 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../models/candidate.dart';
-import '../../../models/hiring_job.dart';
 import '../../../services/hiring_service.dart';
-import '../../../services/polling.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/app_nav.dart';
 import '../../../widgets/app_toast.dart';
@@ -21,16 +19,14 @@ import 'filters_sheet.dart';
 import 'swipe_controller.dart';
 import 'swipe_decision.dart';
 
-/// The company's main screen (spec C2): job selector, filters, saved
-/// searches, a 3-card swipe stack and the action bar.
+/// The company's main screen (spec C2): filters, saved searches, a 3-card
+/// swipe stack and the action bar. Swiping is locked until a filter is set;
+/// every filter applied is saved in the Filters tab.
 class SwipeScreen extends StatefulWidget {
-  /// Start on this job (otherwise: last used, then first open).
-  final String? initialJobId;
-
   /// Apply this saved search on start.
   final String? initialSearchId;
 
-  const SwipeScreen({super.key, this.initialJobId, this.initialSearchId});
+  const SwipeScreen({super.key, this.initialSearchId});
 
   @override
   State<SwipeScreen> createState() => _SwipeScreenState();
@@ -64,27 +60,20 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
         if (mounted) setState(() => _dx = _springFrom * (1 - Curves.easeOut.transform(_spring.value)));
       });
 
-    final pendingJob = HiringService.swipeJobRequest.value;
     final pendingSearch = AppNav.swipeSearchId.value;
-    HiringService.swipeJobRequest.value = null;
     AppNav.swipeSearchId.value = null;
-    _c.init(
-      preferJobId: pendingJob ?? widget.initialJobId,
-      searchId: pendingSearch ?? widget.initialSearchId,
-    );
+    _c.init(searchId: pendingSearch ?? widget.initialSearchId);
 
-    HiringService.swipeJobRequest.addListener(_onJobRequest);
+    HiringService.savedFiltersChanged.addListener(_onSavedFiltersChanged);
     AppNav.swipeSearchId.addListener(_onSearchRequest);
-    DataRefresh.instance.addListener(_onDataChanged);
   }
 
   double _springFrom = 0;
 
   @override
   void dispose() {
-    HiringService.swipeJobRequest.removeListener(_onJobRequest);
+    HiringService.savedFiltersChanged.removeListener(_onSavedFiltersChanged);
     AppNav.swipeSearchId.removeListener(_onSearchRequest);
-    DataRefresh.instance.removeListener(_onDataChanged);
     _flashTimer?.cancel();
     _exit.dispose();
     _enter.dispose();
@@ -97,11 +86,9 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
     if (mounted) setState(() {});
   }
 
-  void _onJobRequest() {
-    final id = HiringService.swipeJobRequest.value;
-    if (id == null) return;
-    HiringService.swipeJobRequest.value = null;
-    _c.reloadJobs().then((_) => _c.selectJob(id));
+  void _onSavedFiltersChanged() {
+    _c.reloadSearches();
+    _c.reloadActiveFilter();
   }
 
   void _onSearchRequest() {
@@ -109,10 +96,6 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
     if (id == null) return;
     AppNav.swipeSearchId.value = null;
     _c.applySearchById(id);
-  }
-
-  void _onDataChanged() {
-    if (!_c.loadingJobs) _c.reloadJobs();
   }
 
   // -- events -------------------------------------------------------------
@@ -183,7 +166,7 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
   void _openResume(Candidate c) => pushSmooth(context, ResumeScreen(candidate: c));
 
   Future<void> _openFilters() async {
-    final next = await showFiltersSheet(context, _c);
+    final next = await showFiltersSheet(context, initial: _c.filters, controller: _c);
     if (next != null) await _c.setFilters(next);
   }
 
@@ -191,15 +174,12 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final open = _c.openJobs;
     return Stack(
       children: [
         Column(
           children: [
-            if (open.isNotEmpty) _JobSelector(controller: _c),
-            if (_c.viewState != SwipeViewState.noJobs) _FilterRow(controller: _c, onOpenFilters: _openFilters),
-            if (_c.searches.isNotEmpty && _c.viewState != SwipeViewState.noJobs)
-              _SearchChips(controller: _c),
+            _FilterRow(controller: _c, onOpenFilters: _openFilters),
+            if (_c.searches.isNotEmpty) _SearchChips(controller: _c),
             Expanded(child: _cardArea()),
             if (_c.viewState == SwipeViewState.ready) _actionBar(),
           ],
@@ -226,13 +206,14 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
     switch (_c.viewState) {
       case SwipeViewState.loading:
         return const Center(child: CircularProgressIndicator());
-      case SwipeViewState.noJobs:
+      case SwipeViewState.needsFilter:
         return _EmptyState(
-          icon: Icons.work_outline_rounded,
-          title: 'No open jobs',
-          text: 'Post a job (or reopen one) to start swiping candidates for it.',
-          primaryLabel: '+ Go to jobs',
-          onPrimary: () => AppNav.recruiterTab.value = AppNav.recruiterJobs,
+          icon: Icons.tune_rounded,
+          title: 'Add a filter to see candidates',
+          text: 'Choose who you are looking for (city, experience, skills...). '
+              'No candidates are shown until you apply a filter.',
+          primaryLabel: 'Add filter',
+          onPrimary: _openFilters,
         );
       case SwipeViewState.error:
         return _EmptyState(
@@ -253,20 +234,12 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
       case SwipeViewState.noFilterMatch:
         return _EmptyState(
           icon: Icons.filter_alt_off_outlined,
-          title: 'No one matches your filters',
-          text: 'Try widening them to see more candidates.',
-          secondaryLabel: 'Edit filters',
-          onSecondary: _openFilters,
-          primaryLabel: 'Clear filters',
-          onPrimary: _c.clearFilters,
-        );
-      case SwipeViewState.seenEveryone:
-        return _EmptyState(
-          icon: Icons.groups_2_outlined,
-          title: "You've seen everyone",
-          text: 'New candidates join every day. Check back soon, or review your wishlist.',
-          primaryLabel: 'Open wishlist',
-          onPrimary: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistScreen())),
+          title: 'No more candidates for these filters',
+          text: 'Try widening them, or review your wishlist.',
+          secondaryLabel: 'Open wishlist',
+          onSecondary: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistScreen())),
+          primaryLabel: 'Edit filters',
+          onPrimary: _openFilters,
         );
       case SwipeViewState.ready:
         return _stack();
@@ -327,7 +300,8 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
           ));
         }
 
-        // The top card: drags horizontally, scrolls vertically.
+        // The top card: drags sideways to pass / shortlist; swiping the whole
+        // card up scrolls it: resume, skills, then the intro video.
         children.add(Positioned(
           left: 0,
           right: 0,
@@ -360,6 +334,7 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
                       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                       child: SwipeCardView(
                         candidate: top,
+                        viewportHeight: box.maxHeight - 28,
                         onOpenResume: () => _openResume(top),
                         onToggleWishlist: () => _c.toggleWishlist(top),
                       ),
@@ -467,67 +442,6 @@ class _SwipeScreenState extends State<SwipeScreen> with TickerProviderStateMixin
 
 // -- pieces ---------------------------------------------------------------
 
-class _JobSelector extends StatelessWidget {
-  final SwipeController controller;
-  const _JobSelector({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final jobs = controller.openJobs;
-    final selected = jobs.any((j) => j.id == controller.job?.id) ? controller.job!.id : null;
-    String label(HiringJob j) => j.location.trim().isEmpty ? j.title : '${j.title} · ${j.location}';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.work_outline_rounded, size: 18, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: selected,
-                        isExpanded: true,
-                        hint: const Text('Hiring for'),
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                        items: [
-                          for (final j in jobs)
-                            DropdownMenuItem(
-                              value: j.id,
-                              child: Text(label(j), overflow: TextOverflow.ellipsis),
-                            ),
-                        ],
-                        onChanged: (id) {
-                          if (id != null) controller.selectJob(id);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () => AppNav.recruiterTab.value = AppNav.recruiterJobs,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Job'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _FilterRow extends StatelessWidget {
   final SwipeController controller;
   final VoidCallback onOpenFilters;
@@ -536,6 +450,7 @@ class _FilterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = controller.filters.activeCount;
+    final locked = controller.viewState == SwipeViewState.needsFilter;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 0),
       child: Row(
@@ -544,13 +459,13 @@ class _FilterRow extends StatelessWidget {
             onPressed: onOpenFilters,
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(0, 40),
-              side: BorderSide(color: count > 0 ? AppColors.primary : AppColors.border),
+              side: BorderSide(color: count > 0 || locked ? AppColors.primary : AppColors.border),
             ),
             icon: const Icon(Icons.tune_rounded, size: 18),
             label: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Filters'),
+                Text(locked ? 'Set filters' : 'Filters'),
                 if (count > 0) ...[
                   const SizedBox(width: 6),
                   Container(

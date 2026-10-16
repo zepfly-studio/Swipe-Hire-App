@@ -9,7 +9,7 @@ const { requireAuth } = require("../middleware/requireAuth");
 const { notify, inBackground } = require("../lib/notify");
 const { str, bool, requireRole } = require("../lib/validate");
 const { ensureCompany, spendSwipe, refundSwipe, balanceOf } = require("../lib/credits");
-const { buildCard, relationsFor, isLive, defaultJob, salaryFits, contactOf, cleanFilters, hasAnyFilter } = require("../lib/deck");
+const { buildCard, relationsFor, isLive, defaultJob, generalJob, GENERAL_JOB_ID, salaryFits, contactOf, cleanFilters, hasAnyFilter } = require("../lib/deck");
 const { MAX_SEARCHES, toSearch, liveCandidateIdsMatching } = require("../lib/savedSearches");
 
 const router = express.Router();
@@ -55,14 +55,11 @@ router.post("/swipe", async (req, res) => {
   if (action !== "left" && action !== "right") return res.status(400).json({ error: "Invalid swipe" });
 
   const company = await ensureCompany(req.user);
-  const job = jobId
-    ? await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.companyId } })
-    : await defaultJob(req.user.companyId);
-  if (!job) {
-    return jobId
-      ? res.status(404).json({ error: "Job not found." })
-      : res.status(403).json({ code: "NO_JOB", error: "Please add a job you are hiring for first" });
-  }
+  let job;
+  if (jobId === GENERAL_JOB_ID) job = await generalJob(req.user.companyId);
+  else if (jobId) job = await prisma.jobPosting.findFirst({ where: { id: jobId, recruiterId: req.user.companyId } });
+  else job = (await defaultJob(req.user.companyId)) || (await generalJob(req.user.companyId));
+  if (!job) return res.status(404).json({ error: "Job not found." });
   if (company.swipesLeft <= 0) {
     return res.status(402).json({ code: "NO_SWIPES", error: "You have used all your swipes. Buy a plan to keep swiping." });
   }

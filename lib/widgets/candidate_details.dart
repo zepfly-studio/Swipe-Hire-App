@@ -48,11 +48,15 @@ class MatchBadge extends StatelessWidget {
   }
 }
 
-/// Intro video, section "Skills", "Details" grid and "About" -- used inside
-/// the swipe card and the wishlist sheet. The video only loads when played.
+/// Section "Skills", "Details" grid, "About" and -- last -- the intro video;
+/// used inside the wishlist sheet and the swipe card's second page (which
+/// shows the skills and the video itself, so turns them off). The video only
+/// loads when played.
 class CandidateDetails extends StatelessWidget {
   final Candidate candidate;
-  const CandidateDetails({super.key, required this.candidate});
+  final bool showSkills;
+  final bool showVideo;
+  const CandidateDetails({super.key, required this.candidate, this.showSkills = true, this.showVideo = true});
 
   static String _lpa(double v) => v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
 
@@ -107,26 +111,13 @@ class CandidateDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = candidate;
-    final matched = c.matchedSkills.map((s) => s.toLowerCase()).toSet();
     final rows = _rows();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (c.introVideoUrl.isNotEmpty) ...[
-          _title('Intro video'),
-          IntroVideo(url: c.introVideoUrl),
-          const SizedBox(height: 18),
-        ],
-        if (c.skills.isNotEmpty) ...[
+        if (showSkills && c.skills.isNotEmpty) ...[
           _title('Skills'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final s in c.skills)
-                _SkillChip(label: s, matched: matched.contains(s.toLowerCase())),
-            ],
-          ),
+          SkillChips(candidate: c),
           const SizedBox(height: 18),
         ],
         if (rows.isNotEmpty) ...[
@@ -159,7 +150,43 @@ class CandidateDetails extends StatelessWidget {
         if (c.about.trim().isNotEmpty) ...[
           _title('About'),
           Text(c.about.trim(), style: const TextStyle(fontSize: 14, height: 1.45)),
+          const SizedBox(height: 18),
         ],
+        if (showVideo && c.introVideoUrl.isNotEmpty) ...[
+          _title('Intro video'),
+          IntroVideo(url: c.introVideoUrl),
+        ],
+      ],
+    );
+  }
+}
+
+/// The candidate's skills as chips; skills the job asked for are ticked.
+/// [max] caps the chips (the rest collapse into "+N").
+class SkillChips extends StatelessWidget {
+  final Candidate candidate;
+  final int? max;
+  const SkillChips({super.key, required this.candidate, this.max});
+
+  @override
+  Widget build(BuildContext context) {
+    final skills = candidate.skills;
+    final matched = candidate.matchedSkills.map((s) => s.toLowerCase()).toSet();
+    final shown = max == null ? skills : skills.take(max!).toList();
+    final hidden = skills.length - shown.length;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final s in shown) _SkillChip(label: s, matched: matched.contains(s.toLowerCase())),
+        if (hidden > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Text(
+              '+$hidden',
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+            ),
+          ),
       ],
     );
   }

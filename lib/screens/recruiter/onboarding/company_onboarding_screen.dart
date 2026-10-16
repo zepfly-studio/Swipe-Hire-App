@@ -6,20 +6,16 @@ import '../../../services/auth_service.dart';
 import '../../../services/hiring_service.dart';
 import '../../../services/taxonomy_service.dart';
 import '../../../theme/app_theme.dart';
-import '../../../utils/salary.dart';
 import '../../../widgets/app_toast.dart';
-import '../../../widgets/inputs/autocomplete_field.dart';
 import '../../../widgets/inputs/form_blocks.dart';
 import '../../../widgets/inputs/location_field.dart';
-import '../../../widgets/inputs/tag_input.dart';
 import '../../auth/auth_gate.dart';
-import '../jobs/job_form.dart' show kJobWorkModeLabels, kJobWorkModes;
 import '../swipe/confetti_burst.dart';
 import 'company_onboarding_form.dart';
 
-/// Company onboarding (spec C1): step 1 "About your company", step 2 "Who are
-/// you hiring?", then "You're all set!". One POST /company/onboarding at the
-/// end. With [edit] it shows step 1 only and saves with PUT /company/me,
+/// Company onboarding: "About your company", then "You're all set!" (there
+/// is no job step: recruiters filter candidates on the Swipe tab). One POST
+/// /company/onboarding. With [edit] it saves with PUT /company/me instead,
 /// popping with the saved [HiringCompany].
 class CompanyOnboardingScreen extends StatefulWidget {
   final String userName;
@@ -50,14 +46,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
   final _location = TextEditingController();
   final _website = TextEditingController();
   final _about = TextEditingController();
-  final _role = TextEditingController();
-  final _minExp = TextEditingController();
-  final _maxExp = TextEditingController();
-  final _minSalary = TextEditingController();
-  final _maxSalary = TextEditingController();
-  final _jobLocation = TextEditingController();
 
-  int _step = 0;
   bool _saving = false;
   bool _done = false;
   bool _loadingCompany = false;
@@ -107,7 +96,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _location, _website, _about, _role, _minExp, _maxExp, _minSalary, _maxSalary, _jobLocation]) {
+    for (final c in [_name, _location, _website, _about]) {
       c.dispose();
     }
     super.dispose();
@@ -118,13 +107,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
       ..name = _name.text
       ..location = _location.text
       ..website = _website.text
-      ..about = _about.text
-      ..role = _role.text
-      ..minExp = _minExp.text
-      ..maxExp = _maxExp.text
-      ..minSalary = _minSalary.text
-      ..maxSalary = _maxSalary.text
-      ..jobLocation = _jobLocation.text;
+      ..about = _about.text;
   }
 
   void _clearError(String field) {
@@ -134,20 +117,6 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
         _generalError = null;
       });
     }
-  }
-
-  void _next() {
-    _sync();
-    final errors = _form.validateCompany();
-    if (errors.isNotEmpty) {
-      setState(() => _errors = errors);
-      return;
-    }
-    if (_jobLocation.text.trim().isEmpty) _jobLocation.text = _location.text.trim();
-    setState(() {
-      _errors = {};
-      _step = 1;
-    });
   }
 
   Future<void> _saveEdit() async {
@@ -188,13 +157,9 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
 
   Future<void> _finish() async {
     _sync();
-    final errors = _form.validateAll();
+    final errors = _form.validateCompany();
     if (errors.isNotEmpty) {
-      final first = errors.keys.map(onboardingStepForField).reduce((a, b) => a < b ? a : b);
-      setState(() {
-        _errors = errors;
-        _step = first;
-      });
+      setState(() => _errors = errors);
       return;
     }
     setState(() {
@@ -203,11 +168,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
       _errors = {};
     });
     try {
-      final body = _form.toRequestBody();
-      final res = await _service.onboard(
-        company: Map<String, dynamic>.from(body['company'] as Map),
-        job: Map<String, dynamic>.from(body['job'] as Map),
-      );
+      final res = await _service.onboard(company: _form.companyBody());
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -220,9 +181,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
       setState(() {
         _saving = false;
         if (field is String && field.isNotEmpty) {
-          final key = field.contains('.') ? field : (onboardingStepForField(field) == 0 ? 'company.$field' : 'job.$field');
-          _errors = {key: e.message};
-          _step = onboardingStepForField(key);
+          _errors = {field.contains('.') ? field : 'company.$field': e.message};
         } else {
           _generalError = e.message;
         }
@@ -255,7 +214,6 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
     return PopScope(
       canPop: widget.edit && !_saving,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _step > 0 && !_saving && !_done) setState(() => _step = 0);
       },
       child: Scaffold(
         backgroundColor: AppColors.bgTop,
@@ -308,10 +266,6 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
   }
 
   Widget _card() {
-    final total = widget.edit ? 1 : 2;
-    final percent = ((_step + 1) * 100 ~/ total);
-    final title = _step == 0 ? 'About your company' : 'Who are you hiring?';
-    final subtitle = _step == 0 ? 'Candidates see this when you shortlist them' : 'We rank candidates by how well they match this';
     return Column(
       children: [
         Padding(
@@ -319,39 +273,20 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Text(
-                    widget.edit ? 'Company details' : 'Step ${_step + 1} of $total',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppColors.textSecondary),
-                  ),
-                  const Spacer(),
-                  if (!widget.edit)
-                    Text('$percent%', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                ],
-              ),
-              if (!widget.edit) ...[
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: percent / 100,
-                    minHeight: 5,
-                    backgroundColor: AppColors.surfaceAlt,
-                  ),
-                ),
-              ],
               const SizedBox(height: 14),
-              Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              const Text('About your company', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
-              Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13.5)),
+              const Text(
+                'Candidates see this when you shortlist them',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13.5),
+              ),
             ],
           ),
         ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: _step == 0 ? _stepCompany() : _stepJob(),
+            child: _stepCompany(),
           ),
         ),
         _footer(),
@@ -360,8 +295,7 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
   }
 
   Widget _footer() {
-    final isLast = widget.edit || _step == 1;
-    final label = widget.edit ? 'Save changes' : (_step == 0 ? 'Continue →' : 'Start swiping →');
+    final label = widget.edit ? 'Save changes' : 'Continue →';
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
       decoration: const BoxDecoration(
@@ -378,17 +312,9 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
             ),
           Row(
             children: [
-              if (_step == 1 && !widget.edit) ...[
-                OutlinedButton(
-                  onPressed: _saving ? null : () => setState(() => _step = 0),
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(56, 50)),
-                  child: const Text('←'),
-                ),
-                const SizedBox(width: 10),
-              ],
               Expanded(
                 child: FilledButton(
-                  onPressed: _saving || _loadingCompany ? null : (widget.edit ? _saveEdit : (isLast ? _finish : _next)),
+                  onPressed: _saving || _loadingCompany ? null : (widget.edit ? _saveEdit : _finish),
                   style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
                   child: _saving
                       ? const SizedBox(
@@ -489,108 +415,6 @@ class _CompanyOnboardingScreenState extends State<CompanyOnboardingScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _stepJob() {
-    final minHint = parseLpa(_minSalary.text);
-    final maxHint = parseLpa(_maxSalary.text);
-    return Column(
-      children: [
-        FormFieldBlock(
-          label: 'Role you are hiring for',
-          required: true,
-          error: _errors['job.title'],
-          child: ValueListenableBuilder<Taxonomy>(
-            valueListenable: TaxonomyService.instance.notifier,
-            builder: (context, tax, _) => AutocompleteField(
-              controller: _role,
-              options: tax.roles,
-              hintText: 'e.g. Frontend Developer',
-              hasError: _errors.containsKey('job.title'),
-              onChanged: (_) => _clearError('job.title'),
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        FormFieldBlock(
-          label: 'Skills you need',
-          required: true,
-          error: _errors['job.skills'],
-          hint: 'Candidates with these skills are shown first · comma adds exactly what you typed',
-          child: ValueListenableBuilder<Taxonomy>(
-            valueListenable: TaxonomyService.instance.notifier,
-            builder: (context, tax, _) => TagInput(
-              tags: _form.skills,
-              options: tax.skills,
-              hintText: 'React, JavaScript…',
-              hasError: _errors.containsKey('job.skills'),
-              onChanged: (v) => setState(() {
-                _form.skills = v;
-                _errors = {..._errors}..remove('job.skills');
-              }),
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _num('Min experience (yrs)', _minExp, '0', 'job.minExperienceYears')),
-            const SizedBox(width: 12),
-            Expanded(child: _num('Max experience (yrs)', _maxExp, '5', 'job.maxExperienceYears')),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _num('Min salary (LPA)', _minSalary, '3', 'job.salaryMinLpa',
-                  hint: _minSalary.text.trim().isEmpty ? null : minHint.hint),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _num('Max salary (LPA)', _maxSalary, '8', 'job.salaryMaxLpa',
-                  required: true, hint: maxHint.hint),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        FormFieldBlock(
-          label: 'Job location',
-          child: LocationField(controller: _jobLocation, hintText: 'Jaipur'),
-        ),
-        const SizedBox(height: 14),
-        FormFieldBlock(
-          label: 'Work mode',
-          child: ChipSelect(
-            options: kJobWorkModes,
-            labels: kJobWorkModeLabels,
-            value: _form.workMode,
-            onChanged: (v) => setState(() => _form.workMode = v),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _num(String label, TextEditingController c, String placeholder, String field,
-      {bool required = false, String? hint}) {
-    return FormFieldBlock(
-      label: label,
-      required: required,
-      error: _errors[field],
-      hint: hint,
-      child: TextField(
-        controller: c,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: fieldDecoration(hintText: placeholder, hasError: _errors.containsKey(field)),
-        onChanged: (_) {
-          _clearError(field);
-          setState(() {});
-        },
-      ),
     );
   }
 }

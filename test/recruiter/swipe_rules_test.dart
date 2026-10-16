@@ -72,6 +72,17 @@ void main() {
       });
     });
 
+    test('work mode and job type are sent, counted, saved and labelled', () {
+      const f = SwipeFilters(workModes: ['remote', 'hybrid'], jobTypes: ['contract']);
+      expect(f.isEmpty, isFalse);
+      expect(f.toQuery(), {'workMode': 'remote,hybrid', 'jobType': 'contract'});
+      expect(f.activeCount, 2);
+      expect(SwipeFilters.fromJson(f.toJson()), f);
+      expect(f.summaryParts, ['Remote/Hybrid', 'Contract']);
+      expect(f.label, 'Remote/Hybrid · Contract');
+      expect(f, isNot(const SwipeFilters(workModes: ['remote'], jobTypes: ['contract'])));
+    });
+
     test('empty filters send nothing', () {
       expect(const SwipeFilters().toQuery(), isEmpty);
       expect(const SwipeFilters().isEmpty, isTrue);
