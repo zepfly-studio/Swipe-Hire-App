@@ -21,8 +21,9 @@ const { api, must, emailOf, profileBody, BASE } = require("./seed-demo-via-api")
 const STATE_FILE = process.env.FILTER_STATE_FILE || path.join(__dirname, ".filter-test-accounts.json");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
-// name, age, role, experience, qualification, city, skills, expected LPA,
-// current company, current LPA, notice, about, work modes, job types, negotiable
+// name, age, role, experience, degree + college, city, skills, expected LPA,
+// current company, current LPA, notice, about, work modes, job types, negotiable,
+// [education level override: 10th / 12th / PhD, which the degree text cannot say]
 const ROWS = [
   ["Ritika Sharma", 24, "Content Writer", "1 year", "BA English, University of Rajasthan", "Jaipur",
     ["Content Writing", "SEO", "WordPress"], 3.0, "Pinkcity Media", 2.2, "Immediate",
@@ -112,6 +113,40 @@ const ROWS = [
     ["Python", "TensorFlow", "SQL"], 16.0, "Visionary AI", 12.0, "60 days",
     "TEST: Pune · 3 yrs · hybrid · full-time · 60 days notice · Python.",
     ["hybrid"], ["full-time"], false],
+  // ---- education level / degree / college filters
+  ["Rohit Chauhan", 22, "Computer Hardware Technician", "2 years", "Diploma in Computer Engineering, Government Polytechnic Jaipur", "Jaipur",
+    ["Hardware", "Networking", "Troubleshooting"], 3.0, "Pinkcity Computers", 2.4, "15 days",
+    "TEST: Diploma · Jaipur · 2 yrs · on-site · full-time.", ["onsite"], ["full-time"], false],
+  ["Salman Qureshi", 24, "Web Designer", "3 years", "Diploma in Information Technology, Government Polytechnic Lucknow", "Lucknow",
+    ["HTML", "CSS", "Photoshop"], 4.0, "Awadh Digital", 3.2, "30 days",
+    "TEST: Diploma · Lucknow · 3 yrs · hybrid · full-time or part-time.", ["hybrid"], ["full-time", "part-time"], true],
+  ["Kajal Rawat", 20, "Customer Support Executive", "1 year", "Senior Secondary (CBSE), Delhi Public School", "Delhi",
+    ["Communication", "CRM", "Typing"], 2.4, "CallDesk", 1.9, "Immediate",
+    "TEST: 12th · Delhi · 1 yr · on-site · full-time.", ["onsite"], ["full-time"], false, "12th"],
+  ["Sandeep Yadav", 25, "Delivery Coordinator", "3 years", "Senior Secondary (RBSE), Government Senior Secondary School Jaipur", "Jaipur",
+    ["Logistics", "Excel", "Communication"], 2.8, "Swift Couriers", 2.2, "15 days",
+    "TEST: 12th · Jaipur · 3 yrs · on-site · full-time or contract.", ["onsite"], ["full-time", "contract"], true, "12th"],
+  ["Ravi Meena", 28, "Warehouse Associate", "4 years", "Secondary (RBSE), Government School Dausa", "Jaipur",
+    ["Packing", "Inventory", "Forklift"], 1.8, "Gati Storage", 1.5, "Immediate",
+    "TEST: 10th · Jaipur · 4 yrs · on-site · full-time.", ["onsite"], ["full-time"], false, "10th"],
+  ["Bhavna Iyer", 36, "Research Scientist (AI)", "7 years", "PhD Computer Science, IISc Bengaluru", "Bengaluru",
+    ["Python", "Machine Learning", "PyTorch", "Research"], 30.0, "Neuronest Labs", 26.0, "90 days",
+    "TEST: PhD · IISc · Bengaluru · 7 yrs · hybrid · full-time or contract.", ["hybrid"], ["full-time", "contract"], false, "PhD"],
+  ["Karthik Subramanian", 30, "Embedded Engineer", "4 years", "M.Tech Embedded Systems, NIT Trichy", "Chennai",
+    ["C", "Embedded Systems", "RTOS"], 14.0, "Chola Devices", 11.0, "60 days",
+    "TEST: Post Graduate · M.Tech · NIT Trichy · Chennai · 4 yrs · on-site.", ["onsite"], ["full-time"], false],
+  ["Tanvi Arora", 33, "HR Manager", "7 years", "MBA Human Resources, XLRI Jamshedpur", "Delhi",
+    ["Recruitment", "Payroll", "Employee Relations"], 16.0, "Zenith People", 13.0, "60 days",
+    "TEST: Post Graduate · MBA · XLRI · Delhi · 7 yrs · hybrid.", ["hybrid"], ["full-time"], false],
+  ["Arnav Khanna", 26, "Finance Analyst", "3 years", "B.Com (Hons), Shri Ram College of Commerce", "Delhi",
+    ["Excel", "Financial Modelling", "Tally"], 7.0, "Capitol Finserv", 5.8, "30 days",
+    "TEST: Graduate · B.Com · SRCC · Delhi · 3 yrs · on-site.", ["onsite"], ["full-time"], false],
+  ["Pooja Rawat", 27, "Maths Tutor (Part-time)", "2 years", "B.Sc Mathematics, University of Rajasthan", "Jaipur",
+    ["Teaching", "Mathematics", "Communication"], 2.0, "Freelance", 1.6, "Immediate",
+    "TEST: Graduate · B.Sc · Jaipur · 2 yrs · remote · part-time.", ["remote"], ["part-time"], true],
+  ["Yash Vardhan", 21, "Software Engineering Intern", "Fresher", "BCA, Manipal University Jaipur", "Jaipur",
+    ["Java", "Git", "SQL"], 1.2, "Fresher", 0, "Immediate",
+    "TEST: Graduate · BCA · Manipal University Jaipur · fresher · remote or hybrid · internship.", ["remote", "hybrid"], ["internship"], true],
 ];
 
 const MODE = { onsite: "on-site", hybrid: "hybrid", remote: "remote" };
@@ -157,7 +192,7 @@ async function createAccount({ email, name }) {
 }
 
 async function seed(row, i) {
-  const [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about, modes, types, negotiable] = row;
+  const [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about, modes, types, negotiable, level] = row;
   const account = await createAccount({ email: emailOf(row), name });
   if (!account) return log(`skip (exists): ${name}`);
 
@@ -166,6 +201,7 @@ async function seed(row, i) {
   const demoRow = [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about];
   const { body } = profileBody(demoRow, 100 + i);
   Object.assign(body, { workModes: modes, jobTypes: types, salaryNegotiable: negotiable, about: aboutOf(row) });
+  if (level) body.qualification = level;
   must(await api("PUT", "/candidates/me/profile", { token: account.token, body }), `profile ${name}`);
   must(
     await api("PUT", "/candidates/me/preferences", {
@@ -180,13 +216,14 @@ async function seed(row, i) {
 
 /** --polish: rewrite the About of the already created accounts with the natural text. */
 async function polish(row, i) {
-  const [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about, modes, types, negotiable] = row;
+  const [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about, modes, types, negotiable, level] = row;
   const account = state.accounts.find((a) => a.email === emailOf(row));
   if (!account) return log(`no account for ${name}`);
   const login = must(await api("POST", "/auth/login", { body: { email: account.email, password: account.password } }), `login ${name}`);
   const demoRow = [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about];
   const { body } = profileBody(demoRow, 100 + i);
   Object.assign(body, { workModes: modes, jobTypes: types, salaryNegotiable: negotiable, about: aboutOf(row) });
+  if (level) body.qualification = level;
   must(await api("PUT", "/candidates/me/profile", { token: login.token, body }), `profile ${name}`);
   log(`polished (${i + 1}/${ROWS.length}): ${name}`);
 }

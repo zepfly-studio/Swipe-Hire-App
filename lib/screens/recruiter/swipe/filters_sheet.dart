@@ -76,10 +76,13 @@ class _FiltersSheetState extends State<FiltersSheet> {
   late final TextEditingController _minSalary;
   late final TextEditingController _maxSalary;
   late final TextEditingController _role;
+  late final TextEditingController _education;
   late final TextEditingController _name;
   late List<int> _notice;
   late List<String> _skills;
   late List<String> _workModes;
+  late List<String> _jobTypes;
+  late List<String> _qualifications;
   String? _saveError;
   bool _saving = false;
 
@@ -95,10 +98,13 @@ class _FiltersSheetState extends State<FiltersSheet> {
     _minSalary = TextEditingController(text: _numText(f.minSalary));
     _maxSalary = TextEditingController(text: _numText(f.maxSalary));
     _role = TextEditingController(text: f.role);
+    _education = TextEditingController(text: f.education);
     _name = TextEditingController();
     _notice = [...f.notice];
     _skills = [...f.skills];
     _workModes = [...f.workModes];
+    _jobTypes = [...f.jobTypes];
+    _qualifications = [...f.qualifications];
     TaxonomyService.instance.ensureLoaded();
     _c?.addListener(_onController);
   }
@@ -106,7 +112,7 @@ class _FiltersSheetState extends State<FiltersSheet> {
   @override
   void dispose() {
     _c?.removeListener(_onController);
-    for (final t in [_role, _city, _minExp, _maxExp, _minSalary, _maxSalary, _name]) {
+    for (final t in [_role, _city, _minExp, _maxExp, _minSalary, _maxSalary, _education, _name]) {
       t.dispose();
     }
     super.dispose();
@@ -127,6 +133,9 @@ class _FiltersSheetState extends State<FiltersSheet> {
       notice: ([..._notice]..sort()),
       skills: _skills.take(SwipeFilters.maxSkills).toList(),
       workModes: [..._workModes],
+      jobTypes: [..._jobTypes],
+      qualifications: [..._qualifications],
+      education: _education.text.trim(),
     );
   }
 
@@ -138,9 +147,12 @@ class _FiltersSheetState extends State<FiltersSheet> {
       _minSalary.text = _numText(f.minSalary);
       _maxSalary.text = _numText(f.maxSalary);
       _role.text = f.role;
+      _education.text = f.education;
       _notice = [...f.notice];
       _skills = [...f.skills];
       _workModes = [...f.workModes];
+      _jobTypes = [...f.jobTypes];
+      _qualifications = [...f.qualifications];
       _saveError = null;
     });
   }
@@ -308,12 +320,42 @@ class _FiltersSheetState extends State<FiltersSheet> {
                 ),
                 const SizedBox(height: 14),
                 FormFieldBlock(
+                  label: 'Job type',
+                  child: MultiChipSelect(
+                    options: kJobTypeValues,
+                    values: _jobTypes,
+                    labels: kJobTypeLabelsMap,
+                    onChanged: (v) => setState(() => _jobTypes = v),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FormFieldBlock(
                   label: 'Notice period',
                   child: MultiChipSelect(
                     options: [for (final d in kNoticeBuckets.values) '$d'],
                     values: [for (final d in _notice) '$d'],
                     labels: {for (final e in kNoticeBuckets.entries) '${e.value}': e.key},
                     onChanged: (v) => setState(() => _notice = [for (final s in v) int.parse(s)]),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FormFieldBlock(
+                  label: 'Education level',
+                  child: MultiChipSelect(
+                    options: kQualificationLevels,
+                    values: _qualifications,
+                    onChanged: (v) => setState(() => _qualifications = v),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FormFieldBlock(
+                  label: 'Degree / college',
+                  hint: 'e.g. B.Tech, MBA or Jaipur University',
+                  child: TextField(
+                    controller: _education,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: fieldDecoration(hintText: 'Any'),
+                    onChanged: (_) => setState(() {}),
                   ),
                 ),
                 const SizedBox(height: 14),

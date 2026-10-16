@@ -1,5 +1,8 @@
 /// Work mode and job type values (and labels) shared by the candidate
 /// preferences and the recruiter's candidate filters.
+/// The qualification levels a candidate picks, as the backend stores them.
+const List<String> kQualificationLevels = ['10th', '12th', 'Diploma', 'Graduate', 'Post Graduate', 'PhD'];
+
 const List<String> kJobWorkModes = ['onsite', 'hybrid', 'remote'];
 const Map<String, String> kJobWorkModeLabels = {'onsite': 'On-site', 'hybrid': 'Hybrid', 'remote': 'Remote'};
 const List<String> kJobTypeValues = ['full-time', 'part-time', 'internship', 'contract'];

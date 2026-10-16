@@ -12,7 +12,7 @@ const Map<String, int> kNoticeBuckets = {
 };
 
 /// The filters on the swipe screen: role, city, experience, salary range,
-/// work mode, notice period and skills. Remembered per user, sent to
+/// work mode, job type, notice period, education and skills. Remembered per user, sent to
 /// GET /candidates and stored inside a saved search.
 @immutable
 class SwipeFilters {
@@ -35,6 +35,14 @@ class SwipeFilters {
   /// candidate matches when they accept any of the chosen ones.
   final List<String> workModes;
 
+  /// `full-time`, `part-time`, `internship`, `contract`: any of the chosen ones.
+  final List<String> jobTypes;
+
+  /// Education levels (10th ... PhD) and a degree / college text such as
+  /// "B.Tech" or "Jaipur University".
+  final List<String> qualifications;
+  final String education;
+
   const SwipeFilters({
     this.role = '',
     this.location = '',
@@ -45,6 +53,9 @@ class SwipeFilters {
     this.notice = const [],
     this.skills = const [],
     this.workModes = const [],
+    this.jobTypes = const [],
+    this.qualifications = const [],
+    this.education = '',
   });
 
   static const int maxSkills = 10;
@@ -58,7 +69,10 @@ class SwipeFilters {
       maxSalary == null &&
       notice.isEmpty &&
       skills.isEmpty &&
-      workModes.isEmpty;
+      workModes.isEmpty &&
+      jobTypes.isEmpty &&
+      qualifications.isEmpty &&
+      education.trim().isEmpty;
 
   /// Role, city, each experience and salary bound count one each; notice
   /// period, skills and work mode one each.
@@ -71,7 +85,10 @@ class SwipeFilters {
       (maxSalary != null ? 1 : 0) +
       (notice.isNotEmpty ? 1 : 0) +
       (skills.isNotEmpty ? 1 : 0) +
-      (workModes.isNotEmpty ? 1 : 0);
+      (workModes.isNotEmpty ? 1 : 0) +
+      (jobTypes.isNotEmpty ? 1 : 0) +
+      (qualifications.isNotEmpty ? 1 : 0) +
+      (education.trim().isNotEmpty ? 1 : 0);
 
   /// "Web Developer", "Jaipur", "2-5 yrs", "₹3-7 LPA", "Remote", "Notice 15d",
   /// "React, Excel": the active filters as short phrases (empty when none).
@@ -96,7 +113,10 @@ class SwipeFilters {
       if (exp.isNotEmpty) exp,
       if (pay.isNotEmpty) pay,
       if (workModes.isNotEmpty) workModes.map((m) => kJobWorkModeLabels[m] ?? m).join('/'),
+      if (jobTypes.isNotEmpty) jobTypes.map((t) => kJobTypeLabelsMap[t] ?? t).join('/'),
       if (notice.isNotEmpty) 'Notice ${notice.map((d) => d == 0 ? 'immediate' : '${d}d').join('/')}',
+      if (qualifications.isNotEmpty) qualifications.join('/'),
+      if (education.trim().isNotEmpty) education.trim(),
       if (skills.isNotEmpty) skills.take(4).join(', ') + (skills.length > 4 ? '…' : ''),
     ];
   }
@@ -120,6 +140,9 @@ class SwipeFilters {
         if (notice.isNotEmpty) 'notice': notice.join(','),
         if (skills.isNotEmpty) 'skills': skills.take(maxSkills).join(','),
         if (workModes.isNotEmpty) 'workMode': workModes.join(','),
+        if (jobTypes.isNotEmpty) 'jobType': jobTypes.join(','),
+        if (qualifications.isNotEmpty) 'qualification': qualifications.join(','),
+        if (education.trim().isNotEmpty) 'education': education.trim(),
       };
 
   /// The `filters` object of a saved search (POST /company/searches) and of
@@ -134,6 +157,9 @@ class SwipeFilters {
         'notice': notice,
         'skills': skills.take(maxSkills).toList(),
         'workModes': workModes,
+        'jobTypes': jobTypes,
+        'qualifications': qualifications,
+        'education': education.trim(),
       };
 
   static double? _double(Object? v) {
@@ -173,6 +199,9 @@ class SwipeFilters {
       notice: days.toList()..sort(),
       skills: _strings(raw['skills']),
       workModes: _strings(raw['workModes']),
+      jobTypes: _strings(raw['jobTypes']),
+      qualifications: _strings(raw['qualifications']),
+      education: (raw['education'] ?? '').toString(),
     );
   }
 
@@ -187,7 +216,10 @@ class SwipeFilters {
       other.maxSalary == maxSalary &&
       listEquals(other.notice, notice) &&
       listEquals(other.skills, skills) &&
-      listEquals(other.workModes, workModes);
+      listEquals(other.workModes, workModes) &&
+      listEquals(other.jobTypes, jobTypes) &&
+      listEquals(other.qualifications, qualifications) &&
+      other.education == education;
 
   @override
   int get hashCode => Object.hash(
@@ -200,6 +232,9 @@ class SwipeFilters {
         Object.hashAll(notice),
         Object.hashAll(skills),
         Object.hashAll(workModes),
+        Object.hashAll(jobTypes),
+        Object.hashAll(qualifications),
+        education,
       );
 }
 

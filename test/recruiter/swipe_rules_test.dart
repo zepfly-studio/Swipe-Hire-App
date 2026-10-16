@@ -90,6 +90,17 @@ void main() {
       expect(const SwipeFilters(workModes: ['remote']), isNot(const SwipeFilters(workModes: ['hybrid'])));
     });
 
+    test('job type, education level and degree / college are sent, counted, saved and labelled', () {
+      const f = SwipeFilters(jobTypes: ['contract', 'part-time'], qualifications: ['Diploma', 'PhD'], education: ' B.Tech ');
+      expect(f.isEmpty, isFalse);
+      expect(f.toQuery(), {'jobType': 'contract,part-time', 'qualification': 'Diploma,PhD', 'education': 'B.Tech'});
+      expect(f.activeCount, 3);
+      expect(SwipeFilters.fromJson(f.toJson()).qualifications, ['Diploma', 'PhD']);
+      expect(SwipeFilters.fromJson(f.toJson()).education, 'B.Tech');
+      expect(f.summaryParts, ['Contract/Part-time', 'Diploma/PhD', 'B.Tech']);
+      expect(const SwipeFilters(education: '  ').isEmpty, isTrue);
+    });
+
     test('empty filters send nothing', () {
       expect(const SwipeFilters().toQuery(), isEmpty);
       expect(const SwipeFilters().isEmpty, isTrue);

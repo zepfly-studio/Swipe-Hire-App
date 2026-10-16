@@ -268,6 +268,26 @@ describe("recruiters without a job", () => {
     assert.deepEqual(await ids("maxSalary=5"), sorted(low, flex));
   });
 
+  it("filters candidates by education level and degree / college", async () => {
+    const rec = await signup("recruiter", "Edu Rec");
+    const tag = unique();
+    const mk = (name, qualification, degree, college) =>
+      h.candidateWithProfile(name, { desiredRole: `${tag} Dev`, qualification, degree, college });
+    const dip = await mk("Dip Cand", "Diploma", "Diploma in Computer Engineering", "Govt Polytechnic Jaipur");
+    const btech = await mk("Btech Cand", "Graduate", "B.Tech Computer Science", "Pune University");
+    const mba = await mk("Mba Cand", "Post Graduate", "MBA Finance", "Jaipur University");
+    await hc.giveSwipes(rec, 50);
+    const ids = async (qs) =>
+      (await api("GET", `/candidates?limit=50&q=${tag}&jobId=general&${qs}`, { token: rec.token })).json.candidates.map((c) => c.id).sort();
+    const sorted = (...u) => u.map((x) => x.uid).sort();
+    assert.deepEqual(await ids("qualification=diploma"), sorted(dip));
+    assert.deepEqual(await ids("qualification=Graduate,Post Graduate"), sorted(btech, mba));
+    assert.deepEqual(await ids("education=b.tech"), sorted(btech));
+    assert.deepEqual(await ids("education=jaipur"), sorted(dip, mba));
+    assert.deepEqual(await ids("qualification=Post Graduate&education=jaipur"), sorted(mba));
+    assert.deepEqual(await ids("qualification=nonsense"), sorted(dip, btech, mba), "an unknown level is ignored");
+  });
+
   it("filters candidates by work mode and job type", async () => {
     const rec = await signup("recruiter", "Mode Rec");
     const tag = unique();

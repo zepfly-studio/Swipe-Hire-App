@@ -13,6 +13,8 @@ const MAX_NOTICE_BUCKETS = 10;
 // Candidate preference values the work mode / job type filters accept.
 const WORK_MODES = ["onsite", "hybrid", "remote"];
 const JOB_TYPES = ["full-time", "part-time", "internship", "contract"];
+// What a candidate picks as their qualification (the app's dropdown).
+const QUALIFICATIONS = ["10th", "12th", "Diploma", "Graduate", "Post Graduate", "PhD"];
 
 // A recruiter who never posts a job still swipes: their swipes hang off one
 // private "general hiring" job, asked for with jobId=GENERAL_JOB_ID. It is not
@@ -58,6 +60,16 @@ function choiceList(value, allowed) {
   return out;
 }
 
+function qualificationList(value) {
+  const raw = Array.isArray(value) ? value : csv(value);
+  const out = [];
+  for (const item of raw) {
+    const q = QUALIFICATIONS.find((o) => o.toLowerCase() === String(item ?? "").trim().toLowerCase());
+    if (q && !out.includes(q)) out.push(q);
+  }
+  return out;
+}
+
 function skillList(value) {
   const raw = Array.isArray(value) ? value : csv(value);
   const seen = new Set();
@@ -75,7 +87,7 @@ function skillList(value) {
 /**
  * The deck query string, as the canonical filter object also stored by saved
  * searches: { role, location, minExp, maxExp, minSalary, maxSalary, notice[],
- * skills[], workModes[], jobTypes[] }.
+ * skills[], workModes[], jobTypes[], qualifications[], education }.
  * The older ctcMin/ctcMax/noticeMax query keys still work (`extra`).
  */
 function filtersFromQuery(query) {
@@ -90,6 +102,8 @@ function filtersFromQuery(query) {
     skills: skillList(query.skills),
     workModes: choiceList(query.workMode, WORK_MODES),
     jobTypes: choiceList(query.jobType, JOB_TYPES),
+    qualifications: qualificationList(query.qualification),
+    education: cleanString(query.education, 60),
     extra: {
       ctcMin: optionalNumber(query.ctcMin),
       ctcMax: optionalNumber(query.ctcMax),
@@ -116,6 +130,8 @@ function cleanFilters(input) {
     skills: skillList(f.skills),
     workModes: choiceList(f.workModes, WORK_MODES),
     jobTypes: choiceList(f.jobTypes, JOB_TYPES),
+    qualifications: qualificationList(f.qualifications),
+    education: cleanString(f.education, 60),
   };
 }
 
@@ -130,7 +146,9 @@ function hasAnyFilter(f) {
     f.notice.length > 0 ||
     f.skills.length > 0 ||
     (f.workModes || []).length > 0 ||
-    (f.jobTypes || []).length > 0
+    (f.jobTypes || []).length > 0 ||
+    (f.qualifications || []).length > 0 ||
+    Boolean(f.education)
   );
 }
 
@@ -180,6 +198,18 @@ async function filterConditions(filters) {
   if (filters.notice.length) profile.push({ noticeDays: { in: filters.notice } });
   if (filters.workModes?.length) profile.push({ workModes: { hasSome: filters.workModes } });
   if (filters.jobTypes?.length) profile.push({ jobTypes: { hasSome: filters.jobTypes } });
+  if (filters.qualifications?.length) {
+    profile.push({ OR: filters.qualifications.map((q) => ({ qualification: { equals: q, mode: "insensitive" } })) });
+  }
+  // "B.Tech", "MBA", "Jaipur University": the degree or the college contains it.
+  if (filters.education) {
+    profile.push({
+      OR: [
+        { degree: { contains: filters.education, mode: "insensitive" } },
+        { college: { contains: filters.education, mode: "insensitive" } },
+      ],
+    });
+  }
 
   const extra = filters.extra || {};
   if (extra.ctcMin != null) profile.push({ expectedSalaryLpa: { gte: extra.ctcMin } });
@@ -218,6 +248,11 @@ function filtersMatch(filters, profile) {
   if (f.notice.length && !f.notice.includes(profile.noticeDays)) return false;
   if (f.workModes.length && !f.workModes.some((m) => (profile.workModes || []).includes(m))) return false;
   if (f.jobTypes.length && !f.jobTypes.some((t) => (profile.jobTypes || []).includes(t))) return false;
+  if (f.qualifications.length && !f.qualifications.some((q) => q.toLowerCase() === String(profile.qualification || "").toLowerCase())) return false;
+  if (f.education) {
+    const needle = f.education.toLowerCase();
+    if (![profile.degree, profile.college].some((v) => String(v || "").toLowerCase().includes(needle))) return false;
+  }
   if (f.location) {
     const needle = f.location.toLowerCase();
     const places = [profile.location, ...(profile.preferredLocations || [])];
@@ -353,5 +388,6 @@ module.exports = {
   GENERAL_JOB_ID,
   WORK_MODES,
   JOB_TYPES,
+  QUALIFICATIONS,
   MAX_SKILL_FILTERS,
 };
