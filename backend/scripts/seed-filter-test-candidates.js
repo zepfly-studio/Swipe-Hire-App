@@ -114,6 +114,22 @@ const ROWS = [
     ["hybrid"], ["full-time"], false],
 ];
 
+const MODE = { onsite: "on-site", hybrid: "hybrid", remote: "remote" };
+const KIND = { "full-time": "full-time", "part-time": "part-time", internship: "internship", contract: "contract" };
+const list = (items) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}` : items[0]);
+
+/**
+ * The About text shown on the card: a normal sentence, not the TEST: cheat
+ * sheet (that stays in the row above, for whoever checks the filters).
+ */
+function aboutOf(row) {
+  const [, , role, experience, , city, skills, , company, , notice, , modes, types] = row;
+  const who = /fresher/i.test(experience) ? "Fresher" : `${experience} of experience`;
+  const where = company && company !== "Fresher" && company !== "Freelance" ? ` Currently at ${company}.` : company === "Freelance" ? " Working as a freelancer." : "";
+  const joining = /immediate/i.test(notice) ? "can join immediately" : `${notice} notice period`;
+  return `${role} in ${city} (${who}).${where} Strong in ${skills.slice(0, 3).join(", ")}. Open to ${list(modes.map((m) => MODE[m]))} ${list(types.map((t) => KIND[t]))} roles, ${joining}.`;
+}
+
 let state = { accounts: [] };
 try {
   state = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
@@ -149,7 +165,7 @@ async function seed(row, i) {
   // over modes/negotiable; take its body and put this row's own values on top.
   const demoRow = [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about];
   const { body } = profileBody(demoRow, 100 + i);
-  Object.assign(body, { workModes: modes, jobTypes: types, salaryNegotiable: negotiable });
+  Object.assign(body, { workModes: modes, jobTypes: types, salaryNegotiable: negotiable, about: aboutOf(row) });
   must(await api("PUT", "/candidates/me/profile", { token: account.token, body }), `profile ${name}`);
   must(
     await api("PUT", "/candidates/me/preferences", {
@@ -162,8 +178,31 @@ async function seed(row, i) {
   log(`ready (${i + 1}/${ROWS.length}): ${name}`);
 }
 
+/** --polish: rewrite the About of the already created accounts with the natural text. */
+async function polish(row, i) {
+  const [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about, modes, types, negotiable] = row;
+  const account = state.accounts.find((a) => a.email === emailOf(row));
+  if (!account) return log(`no account for ${name}`);
+  const login = must(await api("POST", "/auth/login", { body: { email: account.email, password: account.password } }), `login ${name}`);
+  const demoRow = [name, age, role, experience, qualification, city, skills, expected, company, currentLpa, notice, about];
+  const { body } = profileBody(demoRow, 100 + i);
+  Object.assign(body, { workModes: modes, jobTypes: types, salaryNegotiable: negotiable, about: aboutOf(row) });
+  must(await api("PUT", "/candidates/me/profile", { token: login.token, body }), `profile ${name}`);
+  log(`polished (${i + 1}/${ROWS.length}): ${name}`);
+}
+
 async function main() {
   log(`target: ${BASE}  state: ${STATE_FILE}  (${state.accounts.length} accounts remembered)`);
+  if (process.argv.includes("--polish")) {
+    for (const [i, row] of ROWS.entries()) {
+      try {
+        await polish(row, i);
+      } catch (e) {
+        log(`FAILED ${row[0]}: ${e.message}`);
+      }
+    }
+    return;
+  }
   const health = await api("GET", "/health");
   if (health.status !== 200) throw new Error(`backend not healthy: ${health.status}`);
   for (const [i, row] of ROWS.entries()) {
