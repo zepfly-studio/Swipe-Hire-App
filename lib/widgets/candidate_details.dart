@@ -65,6 +65,7 @@ class CandidateDetails extends StatelessWidget {
     String clean(String s) => (s.trim() == '-') ? '' : s.trim();
     final exp = clean(c.experience);
     return [
+      ('Job title', clean(c.role)),
       ('Experience', exp),
       ('Expected salary', candidateExpectedSalaryLabel(c)),
       ('Current salary', c.currentSalaryLpa > 0 ? '₹${_lpa(c.currentSalaryLpa)} LPA' : ''),
